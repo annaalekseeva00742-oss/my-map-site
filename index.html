@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Моя карта точек</title>
+    <!-- Подключаем Яндекс.Карты (бесплатно) -->
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=ВАШ_API_КЛЮЧ&lang=ru_RU" type="text/javascript"></script>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
+        #map { width: 100%; height: 100vh; }
+        .controls { 
+            position: absolute; 
+            top: 10px; 
+            right: 10px; 
+            z-index: 1000; 
+            background: white; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            max-width: 300px;
+        }
+        button { 
+            background: #4CAF50; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 14px;
+            margin-top: 10px;
+            width: 100%;
+        }
+        button:hover { background: #45a049; }
+        .info { margin-top: 10px; font-size: 12px; color: #666; }
+        
+        .status-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .status-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .status-btn:hover {
+            transform: scale(1.05);
+        }
+        .btn-found { background: #4CAF50; color: white; }
+        .btn-not-found { background: #212121; color: white; }
+        .btn-rented { background: #9E9E9E; color: white; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="controls">
+        <h3 style="margin: 0 0 10px 0;">📍 Точки из Telegram</h3>
+        <div class="info">Всего точек: <span id="pointCount">0</span></div>
+        <button onclick="buildRoute()">🚗 Построить маршрут</button>
+        <button onclick="clearRoute()">🗑️ Очистить маршрут</button>
+    </div>
+
+    <script>
+        var myMap;
+        var markers = [];
+        var routeControl = null;
+        var API_URL = 'https://my-bot-api.onrender.com'; // Замените на ваш URL
+
+        // Ждём загрузки Яндекс.Карт
+        ymaps.ready(init);
+
+        function init() {
+            // Создаём Яндекс.Карту
+            myMap = new ymaps.Map("map", {
+                center: [55.7558, 37.6173],
+                zoom: 10,
+                controls: ['zoomControl', 'fullscreenControl']
+            });
+
+            // Загружаем точки
+            loadPoints();
+        }
+
+        // Цвета для разных статусов
+        function getMarkerColor(status) {
+            switch(status) {
+                case 'active': return 'red';
+                case 'not_found': return 'black';
+                case 'rented': return 'gray';
+                default: return 'red';
+            }
+        }
+
+        // Загружаем точки с бота
+        function loadPoints() {
+            fetch(`${API_URL}/get_points`)
+                .then(response => response.json())
+                .then(data => {
+                    // Очищаем старые маркеры
+                    markers.forEach(m => myMap.geoObjects.remove(m));
+                    markers = [];
+                    
+                    document.getElementById('pointCount').textContent = data.length;
+                    
+                    data.forEach(point => {
+                        var color = getMarkerColor(point.status);
+                        
+                        // Создаём метку Яндекс.Карт
+                        var placemark = new ymaps.Placemark(
+                            [point.lat, point.lon],
+                            {
+                                balloonContent: `
+                                    <div style="min-width: 200px;">
+                                        <b>${point.title}</b><br>
+                                        <small>${point.address}</small><br>
+                                        <small>Статус: ${point.status}</small>
+                                        <div class="status-buttons">
+                                            <button class="status-btn btn-found" onclick="updateStatus(${point.id}, 'found')">✓ Нашёл</button>
+                                            <button class="status-btn btn-not-found" onclick="updateStatus(${point.id}, 'not_found')">✗ Не нашёл</button>
+                                            <button class="status-btn btn-rented" onclick="updateStatus(${point.id}, 'rented')">🏠 Уехал в аренду</button>
+                                        </div>
+                                    </div>
+                                `
+                            },
+                            {
+                                preset: 'islands#' + color + 'Icon'
+                            }
+                        );
+                        
+                        placemark.properties.pointId = point.id;
+                        placemark.properties.pointData = point;
+                        
+                        myMap.geoObjects.add(placemark);
+                        markers.push(placemark);
+                    });
+
+                    // Показываем все точки на карте
+                    if (data.length > 0) {
+                        myMap.setBounds(myMap.geoObjects.getBounds(), {
+                            checkZoomRange: true,
+                            zoomMargin: 50
+                        });
+                    }
+                });
+        }
+
+        // Обновление статуса точки
+        function updateStatus(pointId, status) {
+            fetch(`${API_URL}/update_status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: pointId,
+                    status: status
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadPoints();
+                }
+            });
+        }
+
+        // Построение маршрута (только для активных точек)
+        function buildRoute() {
+            var activeMarkers = markers.filter(m => m.properties.pointData.status === 'active');
+            
+            if (activeMarkers.length < 2) {
+                alert('Нужно минимум 2 активных точки для маршрута');
+                return;
+            }
+
+            if (routeControl) {
+                myMap.geoObjects.remove(routeControl);
+            }
+
+            var waypoints = activeMarkers.map(m => m.geometry.getCoordinates());
+            
+            // Создаём мультимаршрут
+            var multiRoute = new ymaps.multiRouter.MultiRoute({
+                referencePoints: waypoints,
+                params: {
+                    routingMode: 'auto'
+                }
+            }, {
+                boundsAutoApply: true
+            });
+            
+            myMap.geoObjects.add(multiRoute);
+            routeControl = multiRoute;
+        }
+
+        function clearRoute() {
+            if (routeControl) {
+                myMap.geoObjects.remove(routeControl);
+                routeControl = null;
+            }
+        }
+    </script>
+</body>
+</html>
