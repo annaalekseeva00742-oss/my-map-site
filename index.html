@@ -4,15 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <title>Моя карта Яндекс v2</title>
+    <title>Моя карта Яндекс v3</title>
     <script src="https://api-maps.yandex.ru/2.1/?apikey=5f79475c-6c30-45f6-b5ff-cd85e9d9c70e&lang=ru_RU&load=package.full" type="text/javascript"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
         #map { width: 100%; height: 100vh; }
-        
-        /* УМЕНЬШЕННАЯ ПАНЕЛЬ УПРАВЛЕНИЯ */
         .controls { 
             position: absolute; 
             top: 15px;
@@ -20,44 +16,29 @@
             transform: translateX(-50%);
             z-index: 1000; 
             background: white; 
-            padding: 20px; /* Было 20px */
+            padding: 10px;
             border-radius: 8px; 
             box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
-            min-width: 200px; /* Было 350px */
-            max-width: 280px; /* Было 450px */
+            min-width: 200px;
+            max-width: 250px;
         }
-        
-        .controls h3 {
-            margin: 0 0 15px 0; /* Было 15px */
-            text-align: center;
-            font-size: 15px; /* Было больше */
-        }
-        
-        .info { 
-            font-size: 13px; /* Было 13px */
-            color: #666;
-            text-align: center;
-            margin-bottom: 8px;
-        }
-        
+        .controls h3 { margin: 0 0 8px 0; text-align: center; font-size: 13px; }
+        .info { font-size: 11px; color: #666; text-align: center; margin-bottom: 8px; }
         button { 
             color: white; 
             border: none; 
-            padding: 12px 24px; /* Было 12px 24px */
+            padding: 6px 12px; 
             border-radius: 4px; 
             cursor: pointer; 
-            font-size: 14px; /* Было 14px */
+            font-size: 11px; 
             font-weight: bold;
-            margin-top: 10px; /* Было 10px */
+            margin-top: 5px; 
             width: 100%; 
-            transition: all 0.3s ease;
         }
-        
         .btn-route { background: #4CAF50; }
-        .btn-route:hover { background: #45a049; transform: translateY(-1px); }
+        .btn-route:hover { background: #45a049; }
         .btn-clear { background: #f44336; }
-        .btn-clear:hover { background: #da190b; transform: translateY(-1px); }
-        
+        .btn-clear:hover { background: #da190b; }
         .status-buttons { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
         .status-btn { padding: 5px 8px; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold; color: white; }
         .btn-found { background: #4CAF50; }
@@ -71,7 +52,7 @@
         <h3>Задачи на сегодня</h3>
         <div class="info">Всего: <span id="pointCount">0</span></div>
         <button class="btn-route" onclick="buildRoute()">Построить маршрут</button>
-        <button class="btn-clear" onclick="clearRoute()">Очистить маршрут</button>
+        <button class="btn-clear" onclick="clearRoute()">Очистить</button>
     </div>
 
     <script>
@@ -89,6 +70,27 @@
                 controls: ['zoomControl', 'fullscreenControl']
             });
             loadPoints();
+        }
+
+        // Создаем SVG-иконку с эмодзи и номером
+        function createIcon(color, emoji, num) {
+            var svg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">
+                    <circle cx="21" cy="21" r="19" fill="${color}" stroke="white" stroke-width="2"/>
+                    <text x="21" y="18" font-size="16" text-anchor="middle" dominant-baseline="middle">${emoji}</text>
+                    <text x="21" y="32" font-size="11" font-weight="bold" fill="white" text-anchor="middle">${num}</text>
+                </svg>
+            `;
+            return {
+                iconLayout: ymaps.templateLayoutFactory.createClass(
+                    `<div style="width:42px; height:42px;">${svg}</div>`
+                ),
+                iconShape: {
+                    type: 'Circle',
+                    coordinates: [21, 21],
+                    radius: 21
+                }
+            };
         }
 
         function getMarkerStyle(status) {
@@ -109,17 +111,7 @@
                     data.forEach((point, index) => {
                         var style = getMarkerStyle(point.status);
                         var num = index + 1;
-
-                        var customLayout = ymaps.templateLayoutFactory.createClass(
-                            '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; ' +
-                            'background-color:$[options.color]; border:2px solid #fff; border-radius:50%; ' +
-                            'width:42px; height:42px; box-shadow:0 3px 8px rgba(0,0,0,0.4); color:#fff; ' +
-                            'font-weight:bold; cursor:pointer; transition:transform 0.2s;" ' +
-                            'onmouseover="this.style.transform=\'scale(1.15)\'" onmouseout="this.style.transform=\'scale(1)\'">' +
-                            '<span style="font-size:18px; line-height:1; margin-top:2px;">$[options.emoji]</span>' +
-                            '<span style="font-size:13px; line-height:1; margin-bottom:2px;">$[options.num]</span>' +
-                            '</div>'
-                        );
+                        var iconOptions = createIcon(style.color, style.emoji, num);
 
                         var placemark = new ymaps.Placemark(
                             [point.lat, point.lon],
@@ -131,23 +123,13 @@
                                         <small style="color: #999;">Статус: ${point.status}</small>
                                         <div class="status-buttons">
                                             <button class="status-btn btn-found" onclick="updateStatus(${point.id}, 'found')">✓ Нашёл</button>
-                                            <button class="status-btn btn-not-found" onclick="updateStatus(${point.id}, 'not_found')"> Не нашёл</button>
-                                            <button class="status-btn btn-rented" onclick="updateStatus(${point.id}, 'rented')"> Уехал в аренду</button>
+                                            <button class="status-btn btn-not-found" onclick="updateStatus(${point.id}, 'not_found')">✗ Не нашёл</button>
+                                            <button class="status-btn btn-rented" onclick="updateStatus(${point.id}, 'rented')">🏠 Уехал в аренду</button>
                                         </div>
                                     </div>
                                 `
                             },
-                            {
-                                iconLayout: customLayout,
-                                iconShape: {
-                                    type: 'Circle',
-                                    coordinates: [21, 21],
-                                    radius: 21
-                                },
-                                color: style.color,
-                                emoji: style.emoji,
-                                num: num
-                            }
+                            iconOptions
                         );
                         
                         placemark.properties.set('pointData', point);
