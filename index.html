@@ -127,23 +127,23 @@
                             {
                                 balloonContent: `
                                     <div style="min-width: 200px; padding: 12px; box-sizing: border-box;">
-                                        <b style="font-size: 16px;">${point.title}</b>
+                                        <b style="font-size: 16px; display: block; text-align: center;">${point.title}</b>
                                         
-                                        <div style="color: #555; font-size: 14px; margin: 8px 0;">
+                                        <div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">
                                             ${point.address}
                                         </div>
                                         
-                                        <small style="color: #999;">Статус: ${point.status}</small>
+                                        <small style="color: #999; display: block; text-align: center;">Статус: ${point.status}</small>
                                         
-                                        <!-- КНОПКИ: только текст, без иконок -->
-                                        <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 10px;">
-                                            <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; padding: 8px 12px;">
+                                        <!-- КНОПКИ: центрированы внутри карточки -->
+                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">
+                                            <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">
                                                 Нашёл
                                             </button>
-                                            <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; padding: 8px 12px;">
+                                            <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">
                                                 Не нашёл
                                             </button>
-                                            <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; padding: 8px 12px;">
+                                            <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">
                                                 Уехал в аренду
                                             </button>
                                         </div>
