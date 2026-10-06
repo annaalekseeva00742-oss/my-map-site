@@ -7,7 +7,7 @@ import threading
 import os
 
 # ⚠️ ВАЖНО: Вставьте сюда НОВЫЙ токен, который выдал BotFather после отзыва старого!
-BOT_TOKEN = "СЮДА_ВСТАВИТЬ_НОВЫЙ_ТОКЕН_ОТ_BOTFATHER" 
+BOT_TOKEN = "8803648566:AAHmG4XTMTDqfIHlWjBeDsKCGmQ18pxKnGQ" 
 ADMIN_CHAT_ID = 7929131842 # Ваш ID, чтобы только вы могли управлять ботом
 
 app = Flask(__name__)
