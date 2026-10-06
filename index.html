@@ -9,6 +9,7 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
         #map { width: 100%; height: 100vh; }
+        
         .controls { 
             position: absolute; 
             top: 15px;
@@ -16,24 +17,37 @@
             transform: translateX(-50%);
             z-index: 1000; 
             background: white; 
-            padding: 10px;
+            padding: 20px; /* Было 20px */
             border-radius: 8px; 
             box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
-            min-width: 350px;
-            max-width: 450px;
+            min-width: 300px; /* Было 350px */
+            max-width: 380px; /* Было 450px */
         }
-        .controls h3 { margin: 0 0 8px 0; text-align: center; font-size: 13px; }
-        .info { font-size: 11px; color: #666; text-align: center; margin-bottom: 8px; }
+        
+        .controls h3 {
+            margin: 0 0 15px 0; /* Было 15px */
+            text-align: center;
+            font-size: 15px; /* Было больше */
+        }
+        
+        .info { 
+            font-size: 13px; /* Было 13px */
+            color: #666;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        
         button { 
             color: white; 
             border: none; 
-            padding: 6px 12px; 
+            padding: 12px 24px; /* Было 12px 24px */
             border-radius: 4px; 
             cursor: pointer; 
-            font-size: 11px; 
+            font-size: 14px; /* Было 14px */
             font-weight: bold;
-            margin-top: 5px; 
+            margin-top: 10px; /* Было 10px */
             width: 100%; 
+            transition: all 0.3s ease;
         }
         .btn-route { background: #4CAF50; }
         .btn-route:hover { background: #45a049; }
