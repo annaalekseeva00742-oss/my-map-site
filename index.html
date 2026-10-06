@@ -4,14 +4,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Моя карта Яндекс</title>
-    <script src="https://api-maps.yandex.ru/2.1/?apikey=5f79475c-6c30-45f6-b5ff-cd85e9d9c70e&lang=ru_RU" type="text/javascript"></script>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=5f79475c-6c30-45f6-b5ff-cd85e9d9c70e&lang=ru_RU&load=package.full" type="text/javascript"></script>
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
         #map { width: 100%; height: 100vh; }
-        .controls { position: absolute; top: 10px; right: 10px; z-index: 1000; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); max-width: 300px; }
-        button { background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 14px; margin-top: 10px; width: 100%; }
-        button:hover { background: #45a049; }
-        .info { margin-top: 10px; font-size: 12px; color: #666; }
+        .controls { 
+            position: absolute; 
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000; 
+            background: white; 
+            padding: 20px;
+            border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
+            min-width: 350px;
+            max-width: 450px;
+        }
+        button { 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 14px; 
+            font-weight: bold;
+            margin-top: 10px; 
+            width: 100%; 
+            transition: all 0.3s ease;
+        }
+        .btn-route { background: #4CAF50; }
+        .btn-route:hover { background: #45a049; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .btn-clear { background: #f44336; }
+        .btn-clear:hover { background: #da190b; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .info { margin-top: 10px; font-size: 13px; color: #666; }
         .status-buttons { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
         .status-btn { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; color: white; }
         .btn-found { background: #4CAF50; }
@@ -22,10 +48,10 @@
 <body>
     <div id="map"></div>
     <div class="controls">
-        <h3 style="margin: 0 0 10px 0;">📍 Точки из Telegram</h3>
-        <div class="info">Всего точек: <span id="pointCount">0</span></div>
-        <button onclick="buildRoute()">🚗 Построить маршрут</button>
-        <button onclick="clearRoute()">🗑️ Очистить маршрут</button>
+        <h3 style="margin: 0 0 15px 0; text-align: center;">Задачи на сегодня</h3>
+        <div class="info" style="text-align: center; margin-bottom: 15px;">Всего точек: <span id="pointCount">0</span></div>
+        <button class="btn-route" onclick="buildRoute()">Построить маршрут</button>
+        <button class="btn-clear" onclick="clearRoute()">Очистить маршрут</button>
     </div>
 
     <script>
@@ -38,18 +64,19 @@
 
         function init() {
             myMap = new ymaps.Map("map", {
-                center: [55.7558, 37.6173],
-                zoom: 10,
+                center: [54.7818, 32.0401],
+                zoom: 12,
                 controls: ['zoomControl', 'fullscreenControl']
             });
             loadPoints();
         }
 
-        function getMarkerColor(status) {
-            if (status === 'active') return 'red';
-            if (status === 'not_found') return 'black';
-            if (status === 'rented') return 'gray';
-            return 'red';
+        // Теперь всем точкам присваивается самокат 🛴, меняется только цвет фона
+        function getMarkerStyle(status) {
+            if (status === 'active') return { color: '#ff3b30', emoji: '🛴' }; // Красный
+            if (status === 'not_found') return { color: '#333333', emoji: '🛴' }; // Черный
+            if (status === 'rented') return { color: '#8e8e93', emoji: '🛴' }; // Серый
+            return { color: '#ff3b30', emoji: '🛴' };
         }
 
         function loadPoints() {
@@ -60,26 +87,53 @@
                     markers = [];
                     document.getElementById('pointCount').textContent = data.length;
                     
-                    data.forEach(point => {
+                    data.forEach((point, index) => {
+                        var style = getMarkerStyle(point.status);
+                        var num = index + 1; // Порядковый номер точки
+
+                        // Создаем кастомный макет метки (самокат сверху, номер снизу)
+                        var customLayout = ymaps.templateLayoutFactory.createClass(
+                            '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; ' +
+                            'background-color:$[options.color]; border:2px solid #fff; border-radius:50%; ' +
+                            'width:42px; height:42px; box-shadow:0 3px 8px rgba(0,0,0,0.4); color:#fff; ' +
+                            'font-weight:bold; cursor:pointer; transition:transform 0.2s;" ' +
+                            'onmouseover="this.style.transform=\'scale(1.15)\'" onmouseout="this.style.transform=\'scale(1)\'">' +
+                            '<span style="font-size:18px; line-height:1; margin-top:2px;">$[options.emoji]</span>' +
+                            '<span style="font-size:13px; line-height:1; margin-bottom:2px;">$[options.num]</span>' +
+                            '</div>'
+                        );
+
                         var placemark = new ymaps.Placemark(
                             [point.lat, point.lon],
                             {
                                 balloonContent: `
-                                    <div style="min-width: 200px;">
-                                        <b>${point.title}</b><br><small>${point.address}</small><br>
-                                        <small>Статус: ${point.status}</small>
+                                    <div style="min-width: 200px; padding: 10px;">
+                                        <b style="font-size: 16px;">№${num}. ${point.title}</b><br>
+                                        <small style="color: #666;">${point.address}</small><br>
+                                        <small style="color: #999;">Статус: ${point.status}</small>
                                         <div class="status-buttons">
-                                            <button class="status-btn btn-found" onclick="updateStatus(${point.id}, 'found')">✅ Нашёл</button>
-                                            <button class="status-btn btn-not-found" onclick="updateStatus(${point.id}, 'not_found')">❌ Не нашёл</button>
-                                            <button class="status-btn btn-rented" onclick="updateStatus(${point.id}, 'rented')">Уехал в аренду</button>
+                                            <button class="status-btn btn-found" onclick="updateStatus(${point.id}, 'found')">✓ Нашёл</button>
+                                            <button class="status-btn btn-not-found" onclick="updateStatus(${point.id}, 'not_found')">✗ Не нашёл</button>
+                                            <button class="status-btn btn-rented" onclick="updateStatus(${point.id}, 'rented')"> Уехал в аренду</button>
                                         </div>
                                     </div>
                                 `
                             },
-                            { preset: 'islands#' + getMarkerColor(point.status) + 'DotIcon' }
+                            {
+                                iconLayout: customLayout,
+                                iconShape: {
+                                    type: 'Circle',
+                                    coordinates: [21, 21],
+                                    radius: 21
+                                },
+                                // Передаем данные внутрь макета
+                                color: style.color,
+                                emoji: style.emoji,
+                                num: num
+                            }
                         );
-                        placemark.properties.pointId = point.id;
-                        placemark.properties.pointData = point;
+                        
+                        placemark.properties.set('pointData', point);
                         myMap.geoObjects.add(placemark);
                         markers.push(placemark);
                     });
@@ -87,7 +141,8 @@
                     if (data.length > 0) {
                         myMap.setBounds(myMap.geoObjects.getBounds(), { checkZoomRange: true, zoomMargin: 50 });
                     }
-                });
+                })
+                .catch(err => console.error("Ошибка загрузки точек:", err));
         }
 
         function updateStatus(pointId, status) {
@@ -101,20 +156,41 @@
         }
 
         function buildRoute() {
-            var activeMarkers = markers.filter(m => m.properties.pointData.status === 'active');
-            if (activeMarkers.length < 2) { alert('Нужно минимум 2 активных (красных) точки'); return; }
-            if (routeControl) myMap.geoObjects.remove(routeControl);
+            var activeMarkers = markers.filter(function(m) {
+                var data = m.properties.get('pointData');
+                return data && data.status === 'active';
+            });
+
+            if (activeMarkers.length < 2) { 
+                alert('Нужно минимум 2 активных (красных) точки для построения маршрута!'); 
+                return; 
+            }
             
-            var waypoints = activeMarkers.map(m => m.geometry.getCoordinates());
+            if (routeControl) {
+                myMap.geoObjects.remove(routeControl);
+            }
+            
+            var waypoints = activeMarkers.map(function(m) {
+                return m.geometry.getCoordinates();
+            });
+            
             routeControl = new ymaps.multiRouter.MultiRoute({
                 referencePoints: waypoints,
                 params: { routingMode: 'auto' }
-            }, { boundsAutoApply: true });
+            }, { 
+                boundsAutoApply: true,
+                routeActiveStrokeColor: "2a8fbd",
+                routeActiveStrokeWidth: 4
+            });
+            
             myMap.geoObjects.add(routeControl);
         }
 
         function clearRoute() {
-            if (routeControl) { myMap.geoObjects.remove(routeControl); routeControl = null; }
+            if (routeControl) { 
+                myMap.geoObjects.remove(routeControl); 
+                routeControl = null; 
+            }
         }
     </script>
 </body>
