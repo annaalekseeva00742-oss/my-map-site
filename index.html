@@ -17,21 +17,21 @@
             transform: translateX(-50%);
             z-index: 1000; 
             background: white; 
-            padding: 20px; /* Было 20px */
+            padding: 20px;
             border-radius: 8px; 
             box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
-            min-width: 300px; /* Было 350px */
-            max-width: 320px; /* Было 450px */
+            min-width: 300px;
+            max-width: 350px;
         }
         
         .controls h3 {
-            margin: 0 0 15px 0; /* Было 15px */
+            margin: 0 0 15px 0;
             text-align: center;
-            font-size: 15px; /* Было больше */
+            font-size: 15px;
         }
         
         .info { 
-            font-size: 13px; /* Было 13px */
+            font-size: 13px;
             color: #666;
             text-align: center;
             margin-bottom: 8px;
@@ -40,12 +40,12 @@
         button { 
             color: white; 
             border: none; 
-            padding: 12px 24px; /* Было 12px 24px */
+            padding: 12px 24px; 
             border-radius: 4px; 
             cursor: pointer; 
-            font-size: 14px; /* Было 14px */
+            font-size: 14px;
             font-weight: bold;
-            margin-top: 10px; /* Было 10px */
+            margin-top: 10px;
             width: 100%; 
             transition: all 0.3s ease;
         }
@@ -86,17 +86,16 @@
             loadPoints();
         }
 
-        // Создаем SVG-иконку: уменьшенный размер, без обводки, с отступом
         function createIcon(color, emoji, taskNumber) {
-            // Уменьшили размер с 42 до 36 пикселей
             var svg = `
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-                    <!-- Убрали stroke="white", сделали круг чуть меньше (r="18") -->
                     <circle cx="18" cy="18" r="18" fill="${color}"/>
-                    <!-- Подняли эмодзи чуть выше (y="15") -->
-                    <text x="18" y="15" font-size="14" text-anchor="middle" dominant-baseline="middle">${emoji}</text>
-                    <!-- Опустили цифру ниже (y="28"), создав визуальный отступ ~5-7 пикселей -->
-                    <text x="18" y="28" font-size="10" font-weight="bold" fill="white" text-anchor="middle">${taskNumber}</text>
+                    
+                    <!-- ЭМОДЗИ: y="13" (подняли выше, было 15) -->
+                    <text x="18" y="13" font-size="14" text-anchor="middle" dominant-baseline="middle">${emoji}</text>
+                    
+                    <!-- ЦИФРА: y="31" (опустили ниже, было 28) -->
+                    <text x="18" y="31" font-size="10" font-weight="bold" fill="white" text-anchor="middle">${taskNumber}</text>
                 </svg>
             `;
             return {
@@ -143,7 +142,7 @@
                                         <div class="status-buttons">
                                             <button class="status-btn btn-found" onclick="updateStatus(${point.id}, 'found')">Нашёл</button>
                                             <button class="status-btn btn-not-found" onclick="updateStatus(${point.id}, 'not_found')">Не нашёл</button>
-                                            <button class="status-btn btn-rented" onclick="updateStatus(${point.id}, 'rented')"Уехал в аренду</button>
+                                            <button class="status-btn btn-rented" onclick="updateStatus(${point.id}, 'rented')">Уехал в аренду</button>
                                         </div>
                                     </div>
                                 `
