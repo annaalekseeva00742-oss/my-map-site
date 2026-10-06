@@ -24,9 +24,18 @@ def init_db():
 init_db()
 
 def get_coordinates(address):
-    # 🔒 ЖЕСТКАЯ ПРИВЯЗКА К СМОЛЕНСКУ
-    # Бот сам добавит "г. Смоленск, " перед тем, что вы написали
-    query = f"г. Смоленск, {address}"
+    # Умная подготовка адреса для Смоленска
+    address_clean = address.strip()
+    
+    # Список допустимых начал адреса, чтобы не дублировать слово "улица"
+    street_prefixes = ('ул.', 'улица', 'пр.', 'проспект', 'пл.', 'площадь', 'пер.', 'переулок', 'ш.', 'шоссе', 'б-р', 'бульвар', 'наб.', 'набережная')
+    
+    # Если адрес НЕ начинается с этих слов, добавляем "улица "
+    if not address_clean.lower().startswith(street_prefixes):
+        address_clean = "улица " + address_clean
+    
+    # Формируем итоговый запрос для геокодера
+    query = f"г. Смоленск, {address_clean}"
     
     url = "https://nominatim.openstreetmap.org/search"
     params = {"q": query, "format": "json", "limit": 1}
@@ -58,9 +67,10 @@ def handle_message(message):
         title = parts[1].strip()
         
         if not location_part or not title:
-            bot.reply_to(message, "⚠️ Формат: Адрес или Координаты - Название\nПример: Гагарина 5 - Офис")
+            bot.reply_to(message, "⚠️ Формат: Адрес или Координаты - Название\nПример: Ленина 14 - 666")
             return
 
+        # Проверка на координаты (например, 54.78, 32.04)
         coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', location_part)
         
         if coord_match:
@@ -68,12 +78,13 @@ def handle_message(message):
             lon = float(coord_match.group(2))
             bot.reply_to(message, f"✅ Координаты приняты!\n📍 {title}")
         else:
-            bot.reply_to(message, f"⏳ Ищу '{location_part}' в г. Смоленск...")
+            bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
             lat, lon = get_coordinates(location_part)
             
         if lat and lon:
             conn = sqlite3.connect('points.db')
             c = conn.cursor()
+            # Сохраняем в базу именно то, что ввел пользователь (без наших добавок, для красоты)
             c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (?, ?, ?, ?, 'active')",
                      (title, location_part, lat, lon))
             conn.commit()
@@ -82,7 +93,7 @@ def handle_message(message):
         else:
             bot.reply_to(message, f"❌ Не удалось найти адрес: '{location_part}' в Смоленске. Проверьте написание.")
     else:
-        bot.reply_to(message, "⚠️ Формат: Адрес или Координаты - Название\nПримеры:\n• Гагарина 5 - Офис\n• ул. Ленина 10 - Склад\n• 54.781, 32.045 - Точка на поле")
+        bot.reply_to(message, "⚠️ Формат: Адрес или Координаты - Название\nПримеры:\n• Ленина 14 - 666\n• ул. Гагарина 5 - Офис\n• 54.781, 32.045 - Точка на поле")
 
 @app.route('/')
 def serve_website():
@@ -120,4 +131,4 @@ if __name__ == '__main__':
     bot_thread.daemon = True
     bot_thread.start()
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port) 
+    app.run(host='0.0.0.0', port=port)
