@@ -135,16 +135,16 @@
                                         
                                         <small style="color: #999;">Статус: ${point.status}</small>
                                         
-                                        <!-- КНОПКИ: выровнены по левому краю с иконками -->
+                                        <!-- КНОПКИ: только текст, без иконок -->
                                         <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 10px;">
-                                            <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; display: flex; align-items: center; gap: 6px; padding: 8px 12px 8px 10px;">
-                                                <span>✓</span> Нашёл
+                                            <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; padding: 8px 12px;">
+                                                Нашёл
                                             </button>
-                                            <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; display: flex; align-items: center; gap: 6px; padding: 8px 12px 8px 10px;">
-                                                <span>✗</span> Не нашёл
+                                            <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; padding: 8px 12px;">
+                                                Не нашёл
                                             </button>
-                                            <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; display: flex; align-items: center; gap: 6px; padding: 8px 12px 8px 10px;">
-                                                <span>🏠</span> Уехал в аренду
+                                            <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; text-align: left; padding: 8px 12px;">
+                                                Уехал в аренду
                                             </button>
                                         </div>
                                     </div>
