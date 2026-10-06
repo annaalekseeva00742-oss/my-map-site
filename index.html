@@ -53,8 +53,12 @@
         .btn-route:hover { background: #45a049; }
         .btn-clear { background: #f44336; }
         .btn-clear:hover { background: #da190b; }
-        .status-buttons { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
-        .status-btn { padding: 5px 8px; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold; color: white; }
+        
+        /* УМЕНЬШИЛИ расстояние между кнопками с 5px до 3px */
+        .status-buttons { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+        
+        /* УВЕЛИЧИЛИ размер кнопок и текста на них */
+        .status-btn { padding: 8px 12px; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: bold; color: white; }
         .btn-found { background: #4CAF50; }
         .btn-not-found { background: #212121; }
         .btn-rented { background: #9E9E9E; }
@@ -90,11 +94,7 @@
             var svg = `
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
                     <circle cx="18" cy="18" r="18" fill="${color}"/>
-                    
-                    <!-- ЭМОДЗИ: y="13" (подняли выше, было 15) -->
                     <text x="18" y="13" font-size="14" text-anchor="middle" dominant-baseline="middle">${emoji}</text>
-                    
-                    <!-- ЦИФРА: y="31" (опустили ниже, было 28) -->
                     <text x="18" y="31" font-size="10" font-weight="bold" fill="white" text-anchor="middle">${taskNumber}</text>
                 </svg>
             `;
@@ -136,8 +136,13 @@
                             {
                                 balloonContent: `
                                     <div style="min-width: 200px; padding: 10px;">
-                                        <b style="font-size: 16px;">${point.title}</b><br>
-                                        <small style="color: #666;">${point.address}</small><br>
+                                        <b style="font-size: 16px;">${point.title}</b>
+                                        
+                                        <!-- УВЕЛИЧИЛИ адрес в 2 раза и сделали жирным -->
+                                        <div style="color: #333; font-size: 18px; font-weight: bold; margin: 8px 0;">
+                                            ${point.address}
+                                        </div>
+                                        
                                         <small style="color: #999;">Статус: ${point.status}</small>
                                         <div class="status-buttons">
                                             <button class="status-btn btn-found" onclick="updateStatus(${point.id}, 'found')">Нашёл</button>
