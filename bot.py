@@ -7,7 +7,8 @@ from flask_cors import CORS
 import threading
 import os
 
-BOT_TOKEN = os.environ.get("8803648566:AAHmG4XTMTDqfIHlWjBeDsKCGmQ18pxKnGQ")
+# BOT_TOKEN = os.environ.get("BOT_TOKEN")  <-- Эта строка теперь отключена
+BOT_TOKEN = "8803648566:AAHmG4XTMTDqfIHlWjBeDsKCGmQ18pxKnGQ"
 ADMIN_CHAT_ID = 7929131842
 
 app = Flask(__name__)
