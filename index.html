@@ -157,7 +157,7 @@
             min-width: 250px;
             max-width: 350px;
             align-items: center;
-            justify-content: space-between;
+            gap: 8px;
             box-sizing: border-box;
         }
 
@@ -180,35 +180,6 @@
             font-weight: bold;
             font-size: 13px;
         }
-
-        /* Кнопка геолокации */
-        .geolocation-btn {
-            position: absolute;
-            bottom: 200px;
-            right: 15px;
-            z-index: 1000;
-            background: white;
-            border: none;
-            border-radius: 50%;
-            width: 44px;
-            height: 44px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            cursor: pointer;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .geolocation-btn:active {
-            background: #f0f0f0;
-        }
-
-        /* Анимация пульсации для точки геолокации */
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            100% { transform: scale(3); opacity: 0; }
-        }
     </style>
 </head>
 <body>
@@ -218,9 +189,6 @@
         <h3 onclick="onTasksHeaderClick()">Задачи на сегодня</h3>
         <div class="info">Всего: <span id="pointCount">0</span></div>
     </div>
-
-    <!-- Кнопка "Моё местоположение" -->
-    <button class="geolocation-btn" onclick="centerOnMe()" title="Моё местоположение">📍</button>
 
     <div class="bottom-panel" id="bottomPanel" style="display: none;">
         <button class="close-btn" onclick="closeBottomPanel()">✕</button>
@@ -269,18 +237,12 @@
         
         var tasksHeaderClickCount = 0;
         var tasksHeaderClickTimer = null;
-        
-        // Переменные для геолокации
-        var myLocationMarker = null;
-        var myLocationPulse = null;
-        var myLocationCoords = null;
 
         ymaps.ready(init);
 
         function init() {
             loadDeparturesFromServer();
             
-            // Гибридный тип карты (спутник + названия)
             myMap = new ymaps.Map("map", {
                 center: [54.7818, 32.0401],
                 zoom: 12,
@@ -288,139 +250,24 @@
                 controls: ['zoomControl', 'fullscreenControl']
             });
             
-            // 🔥 ВКЛЮЧАЕМ ВСЕ НУЖНЫЕ BEHAVIORS ДЛЯ ПОВОРОТА
-            // По умолчанию в Яндекс.Картах multiTouch работает как зум + поворот
-            // Но нужно убедиться что rotate включен
             myMap.behaviors.enable('drag');
             myMap.behaviors.enable('multiTouch');
             myMap.behaviors.enable('scrollZoom');
             myMap.behaviors.enable('dblClickZoom');
             
             loadPoints();
-            initGeolocation();
             
             myMap.events.add('click', function(e) {
                 if (!isDrawingZone) return;
-                
                 var coords = e.get('coords');
                 addZonePoint(coords);
             });
         }
 
-        // 📍 ИНИЦИАЛИЗАЦИЯ ГЕОЛОКАЦИИ
-        function initGeolocation() {
-            // Проверяем поддержку геолокации браузером
-            if (!navigator.geolocation) {
-                console.log('Геолокация не поддерживается');
-                return;
-            }
-            
-            // Запрашиваем местоположение
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    var coords = [position.coords.latitude, position.coords.longitude];
-                    myLocationCoords = coords;
-                    showMyLocation(coords);
-                },
-                function(error) {
-                    console.log('Ошибка геолокации:', error.message);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 60000
-                }
-            );
-            
-            // Также следим за изменением позиции (для мобильных)
-            navigator.geolocation.watchPosition(
-                function(position) {
-                    var coords = [position.coords.latitude, position.coords.longitude];
-                    myLocationCoords = coords;
-                    updateMyLocation(coords);
-                },
-                function(error) {
-                    console.log('Ошибка watchPosition:', error.message);
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 60000
-                }
-            );
-        }
-
-        // 📍 ПОКАЗЫВАЕМ ТОЧКУ ГЕОЛОКАЦИИ НА КАРТЕ
-        function showMyLocation(coords) {
-            // Удаляем старые маркеры если есть
-            if (myLocationMarker) {
-                myMap.geoObjects.remove(myLocationMarker);
-            }
-            if (myLocationPulse) {
-                myMap.geoObjects.remove(myLocationPulse);
-            }
-            
-            // Создаём пульсирующий круг (внешний)
-            myLocationPulse = new ymaps.Placemark(coords, {}, {
-                iconLayout: ymaps.templateLayoutFactory.createClass(
-                    '<div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(66, 133, 244, 0.3); animation: pulse 2s infinite;"></div>'
-                ),
-                iconShape: { type: 'Circle', coordinates: [20, 20], radius: 20 }
-            });
-            myMap.geoObjects.add(myLocationPulse);
-            
-            // Создаём синюю точку (внутренняя)
-            myLocationMarker = new ymaps.Placemark(coords, {}, {
-                iconLayout: ymaps.templateLayoutFactory.createClass(
-                    '<div style="width: 16px; height: 16px; background: #4285F4; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>'
-                ),
-                iconShape: { type: 'Circle', coordinates: [8, 8], radius: 8 }
-            });
-            myMap.geoObjects.add(myLocationMarker);
-        }
-
-        // 📍 ОБНОВЛЯЕМ ПОЗИЦИЮ
-        function updateMyLocation(coords) {
-            if (myLocationMarker) {
-                myLocationMarker.geometry.setCoordinates(coords);
-            }
-            if (myLocationPulse) {
-                myLocationPulse.geometry.setCoordinates(coords);
-            }
-        }
-
-        // 📍 ЦЕНТРИРУЕМ КАРТУ НА СЕБЯ
-        function centerOnMe() {
-            if (myLocationCoords) {
-                myMap.setCenter(myLocationCoords, 16);
-            } else {
-                // Если координаты ещё не получены — запрашиваем снова
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        var coords = [position.coords.latitude, position.coords.longitude];
-                        myLocationCoords = coords;
-                        showMyLocation(coords);
-                        myMap.setCenter(coords, 16);
-                    },
-                    function(error) {
-                        alert('Не удалось получить ваше местоположение. Проверьте настройки геолокации.');
-                    },
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
-            }
-        }
-
         function onTasksHeaderClick() {
             tasksHeaderClickCount++;
-            
-            if (tasksHeaderClickTimer) {
-                clearTimeout(tasksHeaderClickTimer);
-            }
-            
-            tasksHeaderClickTimer = setTimeout(function() {
-                tasksHeaderClickCount = 0;
-            }, 1000);
-            
+            if (tasksHeaderClickTimer) clearTimeout(tasksHeaderClickTimer);
+            tasksHeaderClickTimer = setTimeout(function() { tasksHeaderClickCount = 0; }, 1000);
             if (tasksHeaderClickCount >= 3) {
                 tasksHeaderClickCount = 0;
                 openZoneModal();
@@ -453,14 +300,9 @@
         function cancelZoneDrawing() {
             isDrawingZone = false;
             zonePoints = [];
-            
             zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
             zonePointMarkers = [];
-            
-            if (zoneLinePlacemark) {
-                myMap.geoObjects.remove(zoneLinePlacemark);
-                zoneLinePlacemark = null;
-            }
+            if (zoneLinePlacemark) { myMap.geoObjects.remove(zoneLinePlacemark); zoneLinePlacemark = null; }
             
             myMap.behaviors.enable('drag');
             myMap.behaviors.enable('multiTouch');
@@ -473,7 +315,6 @@
 
         function addZonePoint(coords) {
             zonePoints.push(coords);
-            
             var pointMarker = new ymaps.Placemark(coords, {}, {
                 iconLayout: ymaps.templateLayoutFactory.createClass(
                     '<div style="width: 10px; height: 10px; background: #ff3b30; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></div>'
@@ -482,51 +323,32 @@
             });
             myMap.geoObjects.add(pointMarker);
             zonePointMarkers.push(pointMarker);
-            
             updateZoneLine();
         }
 
         function updateZoneLine() {
-            if (zoneLinePlacemark) {
-                myMap.geoObjects.remove(zoneLinePlacemark);
-            }
-            
+            if (zoneLinePlacemark) myMap.geoObjects.remove(zoneLinePlacemark);
             if (zonePoints.length < 2) return;
-            
             zoneLinePlacemark = new ymaps.Polyline(zonePoints, {}, {
-                strokeColor: '#ff3b30',
-                strokeWidth: 3,
-                strokeStyle: 'solid'
+                strokeColor: '#ff3b30', strokeWidth: 3, strokeStyle: 'solid'
             });
-            
             myMap.geoObjects.add(zoneLinePlacemark);
         }
 
         function finishZoneWithButton() {
-            if (zonePoints.length < 3) {
-                alert('Нужно минимум 3 точки для создания зоны!');
-                return;
-            }
-            
+            if (zonePoints.length < 3) { alert('Нужно минимум 3 точки для создания зоны!'); return; }
             finishZone();
         }
 
         function finishZone() {
             zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
             zonePointMarkers = [];
-            if (zoneLinePlacemark) {
-                myMap.geoObjects.remove(zoneLinePlacemark);
-                zoneLinePlacemark = null;
-            }
+            if (zoneLinePlacemark) { myMap.geoObjects.remove(zoneLinePlacemark); zoneLinePlacemark = null; }
             
             var polygon = new ymaps.Polygon([zonePoints], {}, {
-                fillColor: '#FFB6C1',
-                fillOpacity: 0.5,
-                strokeColor: '#ff3b30',
-                strokeWidth: 3,
-                strokeStyle: 'solid'
+                fillColor: '#FFB6C1', fillOpacity: 0.5,
+                strokeColor: '#ff3b30', strokeWidth: 3, strokeStyle: 'solid'
             });
-            
             polygon.events.add('click', function(e) {
                 if (confirm('Удалить эту зону?')) {
                     myMap.geoObjects.remove(polygon);
@@ -534,7 +356,6 @@
                     if (idx > -1) zonePolygons.splice(idx, 1);
                 }
             });
-            
             myMap.geoObjects.add(polygon);
             zonePolygons.push(polygon);
             
@@ -551,12 +372,10 @@
 
         function loadDeparturesFromServer() {
             fetch(API_URL + '/get_departures')
-                .then(function(response) { return response.json(); })
+                .then(function(r) { return r.json(); })
                 .then(function(data) {
                     departures = {};
-                    data.forEach(function(d) {
-                        departures[d.point_id] = { title: d.point_title, name: d.person_name };
-                    });
+                    data.forEach(function(d) { departures[d.point_id] = { title: d.point_title, name: d.person_name }; });
                     renderBottomPanel();
                 });
         }
@@ -565,32 +384,23 @@
             var panel = document.getElementById('bottomPanel');
             var list = document.getElementById('bottomDeparturesList');
             var keys = Object.keys(departures);
-            
-            if (keys.length === 0) {
-                panel.style.display = 'none';
-                return;
-            }
-            
+            if (keys.length === 0) { panel.style.display = 'none'; return; }
             var html = '';
             for (var i = 0; i < keys.length; i++) {
-                var pointId = keys[i];
-                var d = departures[pointId];
+                var d = departures[keys[i]];
                 html += '<div class="departure-item">За ' + d.title + ' ым выехал ' + d.name + '</div>';
             }
             list.innerHTML = html;
             panel.style.display = 'block';
         }
 
-        function closeBottomPanel() {
-            document.getElementById('bottomPanel').style.display = 'none';
-        }
+        function closeBottomPanel() { document.getElementById('bottomPanel').style.display = 'none'; }
 
         function createIcon(color, emoji, taskNumber) {
             var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">' +
                 '<circle cx="18" cy="18" r="18" fill="' + color + '"/>' +
                 '<text x="18" y="13" font-size="14" text-anchor="middle" dominant-baseline="middle">' + emoji + '</text>' +
-                '<text x="18" y="31" font-size="10" font-weight="bold" fill="white" text-anchor="middle">' + taskNumber + '</text>' +
-                '</svg>';
+                '<text x="18" y="31" font-size="10" font-weight="bold" fill="white" text-anchor="middle">' + taskNumber + '</text></svg>';
             return {
                 iconLayout: ymaps.templateLayoutFactory.createClass('<div style="width:36px; height:36px;">' + svg + '</div>'),
                 iconShape: { type: 'Circle', coordinates: [18, 18], radius: 18 }
@@ -607,58 +417,39 @@
         function loadPoints() {
             labelMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
             labelMarkers = [];
-
             fetch(API_URL + '/get_points')
-                .then(function(response) { return response.json(); })
+                .then(function(r) { return r.json(); })
                 .then(function(data) {
                     markers.forEach(function(m) { myMap.geoObjects.remove(m); });
                     markers = [];
                     document.getElementById('pointCount').textContent = data.length;
-                    
                     data.forEach(function(point) {
                         var style = getMarkerStyle(point.status);
-                        var taskNumber = point.title.trim();
-                        var iconOptions = createIcon(style.color, style.emoji, taskNumber);
+                        var iconOptions = createIcon(style.color, style.emoji, point.title.trim());
                         var isBooked = departures[point.id] !== undefined;
-
                         if (isBooked) {
                             var labelLayout = ymaps.templateLayoutFactory.createClass(
                                 '<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 4px; border-radius: 3px; text-align: center; width: 44px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
                             );
-                            var labelPlacemark = new ymaps.Placemark(
-                                [point.lat, point.lon],
-                                {},
-                                {
-                                    iconLayout: labelLayout,
-                                    iconOffset: [-4, -18],
-                                    iconShape: { type: 'Rectangle', coordinates: [[0, 0], [44, 16]] }
-                                }
-                            );
-                            myMap.geoObjects.add(labelPlacemark);
-                            labelMarkers.push(labelPlacemark);
+                            var lp = new ymaps.Placemark([point.lat, point.lon], {}, {
+                                iconLayout: labelLayout, iconOffset: [-4, -18],
+                                iconShape: { type: 'Rectangle', coordinates: [[0, 0], [44, 16]] }
+                            });
+                            myMap.geoObjects.add(lp);
+                            labelMarkers.push(lp);
                         }
-
-                        var placemark = new ymaps.Placemark(
-                            [point.lat, point.lon],
-                            { balloonContent: buildBalloonContent(point, isBooked) },
-                            iconOptions
-                        );
-                        
-                        placemark.properties.set('pointData', point);
-                        myMap.geoObjects.add(placemark);
-                        markers.push(placemark);
+                        var pm = new ymaps.Placemark([point.lat, point.lon], { balloonContent: buildBalloonContent(point, isBooked) }, iconOptions);
+                        pm.properties.set('pointData', point);
+                        myMap.geoObjects.add(pm);
+                        markers.push(pm);
                     });
-
-                    if (data.length > 0) {
-                        myMap.setBounds(myMap.geoObjects.getBounds(), { checkZoomRange: true, zoomMargin: 50 });
-                    }
-                })
-                .catch(function(err) { console.error("Ошибка загрузки точек:", err); });
+                    if (data.length > 0) myMap.setBounds(myMap.geoObjects.getBounds(), { checkZoomRange: true, zoomMargin: 50 });
+                }).catch(function(err) { console.error("Ошибка:", err); });
         }
 
         function buildBalloonContent(point, isBooked) {
             var esc = point.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            var html = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box;">' +
+            var h = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box;">' +
                 '<b style="font-size: 16px; display: block; text-align: center;">' + point.title + '</b>' +
                 '<div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">' + point.address + '</div>' +
                 '<small style="color: #999; display: block; text-align: center;">Статус: ' + point.status + '</small>' +
@@ -666,53 +457,32 @@
                 '<button onclick="event.stopPropagation(); updateStatus(' + point.id + ', \'found\')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Нашёл</button>' +
                 '<button onclick="event.stopPropagation(); updateStatus(' + point.id + ', \'not_found\')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Не нашёл</button>' +
                 '<button onclick="event.stopPropagation(); updateStatus(' + point.id + ', \'rented\')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Уехал в аренду</button>';
-
             if (isBooked) {
-                var name = departures[point.id].name;
-                html += '<button onclick="event.stopPropagation(); resetDeparture(' + point.id + ')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Выехал ' + name + '</button>';
+                h += '<button onclick="event.stopPropagation(); resetDeparture(' + point.id + ')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Выехал ' + departures[point.id].name + '</button>';
             } else {
-                html += '<button onclick="event.stopPropagation(); showChoiceMenu(' + point.id + ', \'' + esc + '\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Забронировать</button>';
+                h += '<button onclick="event.stopPropagation(); showChoiceMenu(' + point.id + ', \'' + esc + '\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Забронировать</button>';
             }
-
-            html += '</div></div>';
-            return html;
+            return h + '</div></div>';
         }
 
         function updateStatus(pointId, status) {
-            fetch(API_URL + '/update_status', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: pointId, status: status })
-            }).then(function(response) { return response.json(); }).then(function(data) {
-                if (data.success) {
-                    if (departures[pointId]) {
-                        fetch(API_URL + '/remove_departure', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ point_id: pointId })
-                        }).then(function() {
-                            delete departures[pointId];
-                            renderBottomPanel();
-                            loadPoints();
-                        });
-                    } else {
-                        loadPoints();
+            fetch(API_URL + '/update_status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pointId, status: status }) })
+                .then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.success) {
+                        if (departures[pointId]) {
+                            fetch(API_URL + '/remove_departure', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ point_id: pointId }) })
+                                .then(function() { delete departures[pointId]; renderBottomPanel(); loadPoints(); });
+                        } else { loadPoints(); }
                     }
-                }
-            });
+                });
         }
 
         function showChoiceMenu(pointId, pointTitle) {
-            var placemark = markers.find(function(m) {
-                var d = m.properties.get('pointData');
-                return d && d.id === pointId;
-            });
-            if (!placemark) return;
-            
-            var point = placemark.properties.get('pointData');
+            var pm = markers.find(function(m) { var d = m.properties.get('pointData'); return d && d.id === pointId; });
+            if (!pm) return;
+            var point = pm.properties.get('pointData');
             var esc = pointTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            
-            var html = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box;">' +
+            var h = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box;">' +
                 '<b style="font-size: 16px; display: block; text-align: center;">' + point.title + '</b>' +
                 '<div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">' + point.address + '</div>' +
                 '<small style="color: #999; display: block; text-align: center;">Статус: ' + point.status + '</small>' +
@@ -724,108 +494,54 @@
                 '<button onclick="event.stopPropagation(); selectName(' + point.id + ', \'' + esc + '\', \'Саша\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Саша</button>' +
                 '<button onclick="event.stopPropagation(); openCustomInputModal(' + point.id + ', \'' + esc + '\')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Ввести своё</button>' +
                 '</div></div>';
-            
-            placemark.properties.set('balloonContent', html);
-            placemark.balloon.open();
+            pm.properties.set('balloonContent', h);
+            pm.balloon.open();
         }
 
         function openCustomInputModal(pointId, pointTitle) {
             currentModalPointId = pointId;
             currentModalPointTitle = pointTitle;
-            
             var modal = document.getElementById('modalOverlay');
             var input = document.getElementById('modalInput');
-            
             input.value = '';
             modal.style.display = 'flex';
-            
-            setTimeout(function() {
-                input.focus();
-            }, 100);
+            setTimeout(function() { input.focus(); }, 100);
         }
 
         function confirmModalInput() {
             var input = document.getElementById('modalInput');
             var name = input.value.trim();
-            
-            if (!name) {
-                input.style.borderColor = '#f44336';
-                setTimeout(function() {
-                    input.style.borderColor = '#ddd';
-                }, 1000);
-                return;
-            }
-            
+            if (!name) { input.style.borderColor = '#f44336'; setTimeout(function() { input.style.borderColor = '#ddd'; }, 1000); return; }
             document.getElementById('modalOverlay').style.display = 'none';
-            
             selectName(currentModalPointId, currentModalPointTitle, name);
-            
             currentModalPointId = null;
             currentModalPointTitle = null;
         }
 
-        document.addEventListener('click', function(e) {
-            if (e.target.id === 'modalOverlay') {
-                document.getElementById('modalOverlay').style.display = 'none';
-            }
-        });
-
+        document.addEventListener('click', function(e) { if (e.target.id === 'modalOverlay') document.getElementById('modalOverlay').style.display = 'none'; });
         document.addEventListener('DOMContentLoaded', function() {
-            var input = document.getElementById('modalInput');
-            input.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    confirmModalInput();
-                }
-            });
+            document.getElementById('modalInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') { e.preventDefault(); confirmModalInput(); } });
         });
 
         function selectName(pointId, pointTitle, name) {
-            fetch(API_URL + '/add_departure', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    point_id: pointId, 
-                    point_title: pointTitle, 
-                    person_name: name 
-                })
-            }).then(function(response) { return response.json(); }).then(function(data) {
-                if (data.success) {
-                    departures[pointId] = { title: pointTitle, name: name };
-                    renderBottomPanel();
-                    loadPoints();
-                    
-                    setTimeout(function() {
-                        var placemark = markers.find(function(m) {
-                            var d = m.properties.get('pointData');
-                            return d && d.id === pointId;
-                        });
-                        if (placemark) placemark.balloon.open();
-                    }, 300);
-                }
-            });
+            fetch(API_URL + '/add_departure', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ point_id: pointId, point_title: pointTitle, person_name: name }) })
+                .then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.success) {
+                        departures[pointId] = { title: pointTitle, name: name };
+                        renderBottomPanel(); loadPoints();
+                        setTimeout(function() { var pm = markers.find(function(m) { var d = m.properties.get('pointData'); return d && d.id === pointId; }); if (pm) pm.balloon.open(); }, 300);
+                    }
+                });
         }
 
         function resetDeparture(pointId) {
-            fetch(API_URL + '/remove_departure', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ point_id: pointId })
-            }).then(function(response) { return response.json(); }).then(function(data) {
-                if (data.success) {
-                    delete departures[pointId];
-                    renderBottomPanel();
-                    loadPoints();
-                    
-                    setTimeout(function() {
-                        var placemark = markers.find(function(m) {
-                            var d = m.properties.get('pointData');
-                            return d && d.id === pointId;
-                        });
-                        if (placemark) placemark.balloon.open();
-                    }, 300);
-                }
-            });
+            fetch(API_URL + '/remove_departure', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ point_id: pointId }) })
+                .then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.success) {
+                        delete departures[pointId]; renderBottomPanel(); loadPoints();
+                        setTimeout(function() { var pm = markers.find(function(m) { var d = m.properties.get('pointData'); return d && d.id === pointId; }); if (pm) pm.balloon.open(); }, 300);
+                    }
+                });
         }
     </script>
 </body>
