@@ -157,18 +157,33 @@
             min-width: 250px;
             max-width: 350px;
             align-items: center;
+            justify-content: space-between;
             box-sizing: border-box;
+        }
+
+        .drawing-indicator .indicator-text {
+            flex: 1;
+        }
+
+        .drawing-indicator .indicator-buttons {
+            display: flex;
+            gap: 10px;
         }
 
         .drawing-indicator button {
             background: white;
             color: #f44336;
             border: none;
-            padding: 5px 10px;
+            padding: 5px 12px;
             border-radius: 4px;
-            margin-left: 40px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 13px;
+        }
+
+        .drawing-indicator .btn-ok {
+            background: #4CAF50;
+            color: white;
         }
     </style>
 </head>
@@ -196,15 +211,18 @@
     <div class="modal-overlay" id="zoneModalOverlay">
         <div class="modal-box">
             <h4>Начерти зону</h4>
-            <p style="color: #666; font-size: 13px; margin: 0 0 15px 0;">Кликай по карте, чтобы ставить точки. Когда линия вернётся к первой точке — зона замкнётся.</p>
+            <p style="color: #666; font-size: 13px; margin: 0 0 15px 0;">Кликай по карте, чтобы ставить точки. Когда закончишь — нажми "Ок".</p>
             <button onclick="startZoneDrawing()">Начать</button>
             <button class="btn-secondary" onclick="closeZoneModal()">Отмена</button>
         </div>
     </div>
 
     <div class="drawing-indicator" id="drawingIndicator">
-        <span>Нарисуй зону</span>
-        <button onclick="cancelZoneDrawing()">Отмена</button>
+        <span class="indicator-text">Нарисуй зону</span>
+        <div class="indicator-buttons">
+            <button onclick="cancelZoneDrawing()">Отмена</button>
+            <button class="btn-ok" onclick="finishZoneWithButton()">Ок</button>
+        </div>
     </div>
 
     <script>
@@ -306,22 +324,8 @@
         }
 
         function addZonePoint(coords) {
-            // ИЗМЕНЕНО: проверяем расстояние начиная с 2 точек (было >= 3)
-            if (zonePoints.length >= 2) {
-                var firstPoint = zonePoints[0];
-                var firstPixel = myMap.getGlobalPixelCenter(firstPoint);
-                var currentPixel = myMap.getGlobalPixelCenter(coords);
-                
-                var dx = firstPixel[0] - currentPixel[0];
-                var dy = firstPixel[1] - currentPixel[1];
-                var distance = Math.sqrt(dx * dx + dy * dy);
-                
-                // Если попали на первую точку — замыкаем зону
-                if (distance < 25) {
-                    finishZone();
-                    return;
-                }
-            }
+            // ИЗМЕНЕНО: убрана проверка расстояния до первой точки
+            // Теперь точки можно ставить сколько угодно
             
             zonePoints.push(coords);
             
@@ -351,6 +355,16 @@
             });
             
             myMap.geoObjects.add(zoneLinePlacemark);
+        }
+
+        // НОВАЯ ФУНКЦИЯ: замыкание зоны по кнопке "Ок"
+        function finishZoneWithButton() {
+            if (zonePoints.length < 3) {
+                alert('Нужно минимум 3 точки для создания зоны!');
+                return;
+            }
+            
+            finishZone();
         }
 
         function finishZone() {
