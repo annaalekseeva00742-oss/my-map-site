@@ -134,6 +134,38 @@
         .modal-box button:active {
             background: #45a049;
         }
+
+        .modal-box .btn-secondary {
+            background: #9E9E9E;
+            margin-top: 8px;
+        }
+
+        .drawing-indicator {
+            display: none;
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #f44336;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 1500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .drawing-indicator button {
+            background: white;
+            color: #f44336;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin-left: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -157,14 +189,34 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="zoneModalOverlay">
+        <div class="modal-box">
+            <h4>Начерти зону</h4>
+            <p style="color: #666; font-size: 13px; margin: 0 0 15px 0;">Кликай по карте, чтобы ставить точки. Когда линия вернётся к первой точке — зона замкнётся.</p>
+            <button onclick="startZoneDrawing()">Начать</button>
+            <button class="btn-secondary" onclick="closeZoneModal()">Отмена</button>
+        </div>
+    </div>
+
+    <div class="drawing-indicator" id="drawingIndicator">
+        ✏️ Рисую зону... 
+        <button onclick="cancelZoneDrawing()">Отмена</button>
+    </div>
+
     <script>
         var myMap;
         var markers = [];
         var labelMarkers = [];
+        var zonePolygons = [];
         var API_URL = 'https://mapbot-api.onrender.com';
         var departures = {};
         var currentModalPointId = null;
         var currentModalPointTitle = null;
+        
+        var isDrawingZone = false;
+        var zonePoints = [];
+        var zoneLinePlacemark = null;
+        var zonePointMarkers = [];
         
         var tasksHeaderClickCount = 0;
         var tasksHeaderClickTimer = null;
@@ -179,6 +231,13 @@
                 controls: ['zoomControl', 'fullscreenControl']
             });
             loadPoints();
+            
+            myMap.events.add('click', function(e) {
+                if (!isDrawingZone) return;
+                
+                var coords = e.get('coords');
+                addZonePoint(coords);
+            });
         }
 
         function onTasksHeaderClick() {
@@ -193,20 +252,140 @@
             }, 1000);
             
             if (tasksHeaderClickCount >= 3) {
-                fetch(API_URL + '/clear_all_departures', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                }).then(function(response) { return response.json(); }).then(function(data) {
-                    if (data.success) {
-                        departures = {};
-                        renderBottomPanel();
-                        updateLabelsOnly();
-                        loadPoints();
-                        tasksHeaderClickCount = 0;
-                        alert('Вся история выездов очищена!');
-                    }
-                });
+                tasksHeaderClickCount = 0;
+                openZoneModal();
             }
+        }
+
+        function openZoneModal() {
+            document.getElementById('zoneModalOverlay').style.display = 'flex';
+        }
+
+        function closeZoneModal() {
+            document.getElementById('zoneModalOverlay').style.display = 'none';
+        }
+
+        function startZoneDrawing() {
+            closeZoneModal();
+            isDrawingZone = true;
+            zonePoints = [];
+            zonePointMarkers = [];
+            
+            // 🔒 ЗАМОРАЖИВАЕМ КАРТУ: отключаем все жесты перемещения
+            myMap.behaviors.disable('drag');
+            myMap.behaviors.disable('multiTouch');
+            myMap.behaviors.disable('scrollZoom');
+            myMap.behaviors.disable('dblClickZoom');
+            
+            document.getElementById('drawingIndicator').style.display = 'block';
+            myMap.container.getElement().style.cursor = 'crosshair';
+        }
+
+        function cancelZoneDrawing() {
+            isDrawingZone = false;
+            zonePoints = [];
+            
+            zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
+            zonePointMarkers = [];
+            
+            if (zoneLinePlacemark) {
+                myMap.geoObjects.remove(zoneLinePlacemark);
+                zoneLinePlacemark = null;
+            }
+            
+            // 🔓 ВОЗВРАЩАЕМ КАРТУ: включаем жесты обратно
+            myMap.behaviors.enable('drag');
+            myMap.behaviors.enable('multiTouch');
+            myMap.behaviors.enable('scrollZoom');
+            myMap.behaviors.enable('dblClickZoom');
+            
+            document.getElementById('drawingIndicator').style.display = 'none';
+            myMap.container.getElement().style.cursor = '';
+        }
+
+        function addZonePoint(coords) {
+            if (zonePoints.length >= 3) {
+                var firstPoint = zonePoints[0];
+                var firstPixel = myMap.getGlobalPixelCenter(firstPoint);
+                var currentPixel = myMap.getGlobalPixelCenter(coords);
+                
+                var dx = firstPixel[0] - currentPixel[0];
+                var dy = firstPixel[1] - currentPixel[1];
+                var distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 25) {
+                    finishZone();
+                    return;
+                }
+            }
+            
+            zonePoints.push(coords);
+            
+            var pointMarker = new ymaps.Placemark(coords, {}, {
+                iconLayout: ymaps.templateLayoutFactory.createClass(
+                    '<div style="width: 10px; height: 10px; background: #ff3b30; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></div>'
+                ),
+                iconShape: { type: 'Circle', coordinates: [5, 5], radius: 5 }
+            });
+            myMap.geoObjects.add(pointMarker);
+            zonePointMarkers.push(pointMarker);
+            
+            updateZoneLine();
+        }
+
+        function updateZoneLine() {
+            if (zoneLinePlacemark) {
+                myMap.geoObjects.remove(zoneLinePlacemark);
+            }
+            
+            if (zonePoints.length < 2) return;
+            
+            zoneLinePlacemark = new ymaps.Polyline(zonePoints, {}, {
+                strokeColor: '#ff3b30',
+                strokeWidth: 3,
+                strokeStyle: 'solid'
+            });
+            
+            myMap.geoObjects.add(zoneLinePlacemark);
+        }
+
+        function finishZone() {
+            zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
+            zonePointMarkers = [];
+            if (zoneLinePlacemark) {
+                myMap.geoObjects.remove(zoneLinePlacemark);
+                zoneLinePlacemark = null;
+            }
+            
+            var polygon = new ymaps.Polygon([zonePoints], {}, {
+                fillColor: '#FFB6C1',
+                fillOpacity: 0.5,
+                strokeColor: '#ff3b30',
+                strokeWidth: 3,
+                strokeStyle: 'solid'
+            });
+            
+            polygon.events.add('click', function(e) {
+                if (confirm('Удалить эту зону?')) {
+                    myMap.geoObjects.remove(polygon);
+                    var idx = zonePolygons.indexOf(polygon);
+                    if (idx > -1) zonePolygons.splice(idx, 1);
+                }
+            });
+            
+            myMap.geoObjects.add(polygon);
+            zonePolygons.push(polygon);
+            
+            // 🔓 ВОЗВРАЩАЕМ КАРТУ: включаем жесты обратно
+            myMap.behaviors.enable('drag');
+            myMap.behaviors.enable('multiTouch');
+            myMap.behaviors.enable('scrollZoom');
+            myMap.behaviors.enable('dblClickZoom');
+            
+            isDrawingZone = false;
+            zonePoints = [];
+            document.getElementById('drawingIndicator').style.display = 'none';
+            myMap.container.getElement().style.cursor = '';
         }
 
         function loadDeparturesFromServer() {
@@ -290,7 +469,7 @@
                                 {},
                                 {
                                     iconLayout: labelLayout,
-                                    iconOffset: [0, -18],
+                                    iconOffset: [-4, -18],
                                     iconShape: { type: 'Rectangle', coordinates: [[0, 0], [44, 16]] }
                                 }
                             );
@@ -484,31 +663,6 @@
                         });
                         if (placemark) placemark.balloon.open();
                     }, 300);
-                }
-            });
-        }
-
-        function updateLabelsOnly() {
-            labelMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
-            labelMarkers = [];
-            
-            markers.forEach(function(placemark) {
-                var point = placemark.properties.get('pointData');
-                if (departures[point.id]) {
-                    var labelLayout = ymaps.templateLayoutFactory.createClass(
-                        '<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 4px; border-radius: 3px; text-align: center; width: 44px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
-                    );
-                    var labelPlacemark = new ymaps.Placemark(
-                        [point.lat, point.lon],
-                        {},
-                        {
-                            iconLayout: labelLayout,
-                            iconOffset: [0, -18],
-                            iconShape: { type: 'Rectangle', coordinates: [[0, 0], [44, 16]] }
-                        }
-                    );
-                    myMap.geoObjects.add(labelPlacemark);
-                    labelMarkers.push(labelPlacemark);
                 }
             });
         }
