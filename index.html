@@ -17,15 +17,15 @@
             transform: translateX(-50%);
             z-index: 1000; 
             background: white; 
-            padding: 20px;
+            padding: 12px 20px;
             border-radius: 8px; 
             box-shadow: 0 2px 8px rgba(0,0,0,0.2); 
-            min-width: 300px;
+            min-width: 250px;
             max-width: 350px;
         }
         
         .controls h3 {
-            margin: 0 0 15px 0;
+            margin: 0 0 5px 0;
             text-align: center;
             font-size: 15px;
         }
@@ -34,28 +34,65 @@
             font-size: 13px;
             color: #666;
             text-align: center;
-            margin-bottom: 8px;
+            margin-bottom: 0;
         }
-        
+
+        /* Нижнее окно с выездами */
+        .bottom-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 15px 45px 15px 15px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
+        .bottom-panel .close-btn {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #333;
+            padding: 0;
+            width: auto;
+            margin: 0;
+            line-height: 1;
+        }
+
         .departure-item {
             font-size: 15px;
-            color: #555;
+            color: #333;
             text-align: center;
-            margin-top: 5px;
+            margin: 4px 0;
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
+    
+    <!-- Верхнее окно (укороченное) -->
     <div class="controls">
         <h3>Задачи на сегодня</h3>
         <div class="info">Всего: <span id="pointCount">0</span></div>
-        <div id="departuresList"></div>
+    </div>
+
+    <!-- Нижнее окно с выездами -->
+    <div class="bottom-panel" id="bottomPanel" style="display: none;">
+        <button class="close-btn" onclick="closeBottomPanel()">✕</button>
+        <div id="bottomDeparturesList"></div>
     </div>
 
     <script>
         var myMap;
         var markers = [];
+        var labelMarkers = [];
         var API_URL = 'https://mapbot-api.onrender.com';
         var departures = {};
 
@@ -74,49 +111,48 @@
         function loadDepartures() {
             var saved = localStorage.getItem('departures');
             if (saved) {
-                try {
-                    departures = JSON.parse(saved);
-                } catch(e) {
-                    departures = {};
-                }
+                try { departures = JSON.parse(saved); } catch(e) { departures = {}; }
             }
-            renderDeparturesList();
+            renderBottomPanel();
         }
 
         function saveDepartures() {
             localStorage.setItem('departures', JSON.stringify(departures));
         }
 
-        function renderDeparturesList() {
-            var container = document.getElementById('departuresList');
-            if (!container) return;
+        function renderBottomPanel() {
+            var panel = document.getElementById('bottomPanel');
+            var list = document.getElementById('bottomDeparturesList');
+            var keys = Object.keys(departures);
+            
+            if (keys.length === 0) {
+                panel.style.display = 'none';
+                return;
+            }
             
             var html = '';
-            for (var pointId in departures) {
-                var pointTitle = departures[pointId].title;
-                var name = departures[pointId].name;
-                html += '<div class="departure-item">За ' + pointTitle + ' ым выехал ' + name + '</div>';
+            for (var i = 0; i < keys.length; i++) {
+                var pointId = keys[i];
+                var d = departures[pointId];
+                html += '<div class="departure-item">За ' + d.title + ' ым выехал ' + d.name + '</div>';
             }
-            container.innerHTML = html;
+            list.innerHTML = html;
+            panel.style.display = 'block';
+        }
+
+        function closeBottomPanel() {
+            document.getElementById('bottomPanel').style.display = 'none';
         }
 
         function createIcon(color, emoji, taskNumber) {
-            var svg = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="18" fill="${color}"/>
-                    <text x="18" y="13" font-size="14" text-anchor="middle" dominant-baseline="middle">${emoji}</text>
-                    <text x="18" y="31" font-size="10" font-weight="bold" fill="white" text-anchor="middle">${taskNumber}</text>
-                </svg>
-            `;
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">' +
+                '<circle cx="18" cy="18" r="18" fill="' + color + '"/>' +
+                '<text x="18" y="13" font-size="14" text-anchor="middle" dominant-baseline="middle">' + emoji + '</text>' +
+                '<text x="18" y="31" font-size="10" font-weight="bold" fill="white" text-anchor="middle">' + taskNumber + '</text>' +
+                '</svg>';
             return {
-                iconLayout: ymaps.templateLayoutFactory.createClass(
-                    `<div style="width:36px; height:36px;">${svg}</div>`
-                ),
-                iconShape: {
-                    type: 'Circle',
-                    coordinates: [18, 18],
-                    radius: 18
-                }
+                iconLayout: ymaps.templateLayoutFactory.createClass('<div style="width:36px; height:36px;">' + svg + '</div>'),
+                iconShape: { type: 'Circle', coordinates: [18, 18], radius: 18 }
             };
         }
 
@@ -128,58 +164,44 @@
         }
 
         function loadPoints() {
-            fetch(`${API_URL}/get_points`)
-                .then(response => response.json())
-                .then(data => {
-                    markers.forEach(m => myMap.geoObjects.remove(m));
+            // Удаляем старые плашки "Выехали"
+            labelMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
+            labelMarkers = [];
+
+            fetch(API_URL + '/get_points')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    markers.forEach(function(m) { myMap.geoObjects.remove(m); });
                     markers = [];
                     document.getElementById('pointCount').textContent = data.length;
                     
-                    data.forEach((point) => {
+                    data.forEach(function(point) {
                         var style = getMarkerStyle(point.status);
-                        var taskNumber = point.title.trim(); 
-                        
+                        var taskNumber = point.title.trim();
                         var iconOptions = createIcon(style.color, style.emoji, taskNumber);
+                        var isBooked = departures[point.id] !== undefined;
 
-                        var departureInfo = departures[point.id];
-                        var departButtonHtml;
-                        
-                        if (departureInfo) {
-                            departButtonHtml = `<button onclick="resetDeparture(${point.id})" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; margin-top: 10px;">Выехал ${departureInfo.name}</button>`;
-                        } else {
-                            var escapedTitle = point.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                            departButtonHtml = `<button onclick="showChoiceMenu(${point.id}, '${escapedTitle}')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; margin-top: 10px;">Выехать за ${point.title} ым</button>`;
+                        // Если точка забронирована — добавляем плашку "Выехали"
+                        if (isBooked) {
+                            var labelLayout = ymaps.templateLayoutFactory.createClass(
+                                '<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 2px 1px; border-radius: 2px; text-align: center; width: 36px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
+                            );
+                            var labelPlacemark = new ymaps.Placemark(
+                                [point.lat, point.lon],
+                                {},
+                                {
+                                    iconLayout: labelLayout,
+                                    iconOffset: [0, -30],
+                                    iconShape: { type: 'Rectangle', coordinates: [[0, 0], [36, 16]] }
+                                }
+                            );
+                            myMap.geoObjects.add(labelPlacemark);
+                            labelMarkers.push(labelPlacemark);
                         }
 
                         var placemark = new ymaps.Placemark(
                             [point.lat, point.lon],
-                            {
-                                balloonContent: `
-                                    <div style="min-width: 200px; padding: 12px; box-sizing: border-box;">
-                                        <b style="font-size: 16px; display: block; text-align: center;">${point.title}</b>
-                                        
-                                        <div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">
-                                            ${point.address}
-                                        </div>
-                                        
-                                        <small style="color: #999; display: block; text-align: center;">Статус: ${point.status}</small>
-                                        
-                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">
-                                            <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">
-                                                Нашёл
-                                            </button>
-                                            <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">
-                                                Не нашёл
-                                            </button>
-                                            <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">
-                                                Уехал в аренду
-                                            </button>
-                                        </div>
-                                        
-                                        ${departButtonHtml}
-                                    </div>
-                                `
-                            },
+                            { balloonContent: buildBalloonContent(point, isBooked) },
                             iconOptions
                         );
                         
@@ -192,20 +214,42 @@
                         myMap.setBounds(myMap.geoObjects.getBounds(), { checkZoomRange: true, zoomMargin: 50 });
                     }
                 })
-                .catch(err => console.error("Ошибка загрузки точек:", err));
+                .catch(function(err) { console.error("Ошибка загрузки точек:", err); });
+        }
+
+        function buildBalloonContent(point, isBooked) {
+            var esc = point.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            var html = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box;">' +
+                '<b style="font-size: 16px; display: block; text-align: center;">' + point.title + '</b>' +
+                '<div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">' + point.address + '</div>' +
+                '<small style="color: #999; display: block; text-align: center;">Статус: ' + point.status + '</small>' +
+                '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">';
+
+            if (isBooked) {
+                var name = departures[point.id].name;
+                html += '<button onclick="resetDeparture(' + point.id + ')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Выехал ' + name + '</button>';
+            } else {
+                html += '<button onclick="updateStatus(' + point.id + ', \'found\')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Нашёл</button>' +
+                    '<button onclick="updateStatus(' + point.id + ', \'not_found\')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Не нашёл</button>' +
+                    '<button onclick="updateStatus(' + point.id + ', \'rented\')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Уехал в аренду</button>' +
+                    '<button onclick="showChoiceMenu(' + point.id + ', \'' + esc + '\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Забронировать</button>';
+            }
+
+            html += '</div></div>';
+            return html;
         }
 
         function updateStatus(pointId, status) {
-            fetch(`${API_URL}/update_status`, {
+            fetch(API_URL + '/update_status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: pointId, status: status })
-            }).then(response => response.json()).then(data => {
+            }).then(function(response) { return response.json(); }).then(function(data) {
                 if (data.success) {
                     if (status === 'found') {
                         delete departures[pointId];
                         saveDepartures();
-                        renderDeparturesList();
+                        renderBottomPanel();
                     }
                     loadPoints();
                 }
@@ -213,148 +257,105 @@
         }
 
         function showChoiceMenu(pointId, pointTitle) {
-            var placemark = markers.find(m => {
-                var data = m.properties.get('pointData');
-                return data && data.id === pointId;
+            var placemark = markers.find(function(m) {
+                var d = m.properties.get('pointData');
+                return d && d.id === pointId;
             });
             if (!placemark) return;
             
             var point = placemark.properties.get('pointData');
-            var escapedTitle = pointTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            var esc = pointTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             
-            var newContent = `
-                <div style="min-width: 200px; padding: 12px; box-sizing: border-box;">
-                    <b style="font-size: 16px; display: block; text-align: center;">${point.title}</b>
-                    <div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">${point.address}</div>
-                    <small style="color: #999; display: block; text-align: center;">Статус: ${point.status}</small>
-                    
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">
-                        <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Нашёл</button>
-                        <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Не нашёл</button>
-                        <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Уехал в аренду</button>
-                    </div>
-                    
-                    <button disabled style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: not-allowed; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; margin-top: 10px; opacity: 0.7;">Кто вы?</button>
-                    
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 5px;">
-                        <button onclick="selectName(${point.id}, '${escapedTitle}', 'Андрей')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Андрей</button>
-                        <button onclick="selectName(${point.id}, '${escapedTitle}', 'Миша')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Миша</button>
-                        <button onclick="selectName(${point.id}, '${escapedTitle}', 'Илья')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Илья</button>
-                        <button onclick="selectName(${point.id}, '${escapedTitle}', 'Саша')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Саша</button>
-                        <button onclick="showCustomInput(${point.id}, '${escapedTitle}')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Ввести своё</button>
-                    </div>
-                </div>
-            `;
+            var html = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box;">' +
+                '<b style="font-size: 16px; display: block; text-align: center;">' + point.title + '</b>' +
+                '<div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">' + point.address + '</div>' +
+                '<small style="color: #999; display: block; text-align: center;">Статус: ' + point.status + '</small>' +
+                '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">' +
+                '<button disabled style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: not-allowed; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; opacity: 0.7;">Кто вы?</button>' +
+                '<button onclick="selectName(' + point.id + ', \'' + esc + '\', \'Андрей\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Андрей</button>' +
+                '<button onclick="selectName(' + point.id + ', \'' + esc + '\', \'Миша\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Миша</button>' +
+                '<button onclick="selectName(' + point.id + ', \'' + esc + '\', \'Илья\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Илья</button>' +
+                '<button onclick="selectName(' + point.id + ', \'' + esc + '\', \'Саша\')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Саша</button>' +
+                '<button onclick="showCustomInput(' + point.id + ', \'' + esc + '\')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Ввести своё</button>' +
+                '</div></div>';
             
-            placemark.properties.set('balloonContent', newContent);
+            placemark.properties.set('balloonContent', html);
             placemark.balloon.open();
         }
 
         function showCustomInput(pointId, pointTitle) {
-            var placemark = markers.find(m => {
-                var data = m.properties.get('pointData');
-                return data && data.id === pointId;
+            var placemark = markers.find(function(m) {
+                var d = m.properties.get('pointData');
+                return d && d.id === pointId;
             });
             if (!placemark) return;
             
             var point = placemark.properties.get('pointData');
-            var escapedTitle = pointTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            var esc = pointTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             
-            var newContent = `
-                <div style="min-width: 200px; padding: 12px; box-sizing: border-box;">
-                    <b style="font-size: 16px; display: block; text-align: center;">${point.title}</b>
-                    <div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">${point.address}</div>
-                    <small style="color: #999; display: block; text-align: center;">Статус: ${point.status}</small>
-                    
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">
-                        <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Нашёл</button>
-                        <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Не нашёл</button>
-                        <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Уехал в аренду</button>
-                    </div>
-                    
-                    <button disabled style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: not-allowed; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; margin-top: 10px; opacity: 0.7;">Кто вы?</button>
-                    
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 5px; width: 80%;">
-                        <input type="text" id="customNameInput-${pointId}" placeholder="Введите имя" style="padding: 8px 12px; border: none; border-radius: 4px; font-size: 13px; width: 100%; box-sizing: border-box; color: white; background: #9E9E9E; text-align: center;" oninput="toggleOkButton(${pointId})">
-                        <button id="okButton-${pointId}" onclick="confirmCustomName(${pointId}, '${escapedTitle}')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; padding: 8px 12px; display: none;">Ок</button>
-                    </div>
-                </div>
-            `;
+            var html = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box;">' +
+                '<b style="font-size: 16px; display: block; text-align: center;">' + point.title + '</b>' +
+                '<div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">' + point.address + '</div>' +
+                '<small style="color: #999; display: block; text-align: center;">Статус: ' + point.status + '</small>' +
+                '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">' +
+                '<button disabled style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: not-allowed; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; opacity: 0.7;">Кто вы?</button>' +
+                '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 80%;">' +
+                '<input type="text" id="customName-' + pointId + '" placeholder="Введите имя" style="padding: 8px 12px; border: none; border-radius: 4px; font-size: 13px; width: 100%; box-sizing: border-box; color: white; background: #9E9E9E; text-align: center;" oninput="toggleOk(' + pointId + ')">' +
+                '<button id="okBtn-' + pointId + '" onclick="confirmCustom(' + pointId + ', \'' + esc + '\')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; padding: 8px 12px; display: none;">Ок</button>' +
+                '</div></div></div>';
             
-            placemark.properties.set('balloonContent', newContent);
+            placemark.properties.set('balloonContent', html);
             placemark.balloon.open();
             
-            setTimeout(() => {
-                var input = document.getElementById('customNameInput-' + pointId);
-                if (input) input.focus();
+            setTimeout(function() {
+                var inp = document.getElementById('customName-' + pointId);
+                if (inp) inp.focus();
             }, 100);
         }
 
-        function toggleOkButton(pointId) {
-            var input = document.getElementById('customNameInput-' + pointId);
-            var okButton = document.getElementById('okButton-' + pointId);
-            if (input && okButton) {
-                okButton.style.display = input.value.trim() ? 'block' : 'none';
+        function toggleOk(pointId) {
+            var inp = document.getElementById('customName-' + pointId);
+            var btn = document.getElementById('okBtn-' + pointId);
+            if (inp && btn) {
+                btn.style.display = inp.value.trim() ? 'block' : 'none';
             }
         }
 
-        function confirmCustomName(pointId, pointTitle) {
-            var input = document.getElementById('customNameInput-' + pointId);
-            if (input && input.value.trim()) {
-                selectName(pointId, pointTitle, input.value.trim());
+        function confirmCustom(pointId, pointTitle) {
+            var inp = document.getElementById('customName-' + pointId);
+            if (inp && inp.value.trim()) {
+                selectName(pointId, pointTitle, inp.value.trim());
             }
         }
 
         function selectName(pointId, pointTitle, name) {
-            departures[pointId] = {title: pointTitle, name: name};
+            departures[pointId] = { title: pointTitle, name: name };
             saveDepartures();
-            renderDeparturesList();
-            refreshBalloon(pointId);
+            renderBottomPanel();
+            loadPoints();
+            
+            setTimeout(function() {
+                var placemark = markers.find(function(m) {
+                    var d = m.properties.get('pointData');
+                    return d && d.id === pointId;
+                });
+                if (placemark) placemark.balloon.open();
+            }, 300);
         }
 
         function resetDeparture(pointId) {
             delete departures[pointId];
             saveDepartures();
-            renderDeparturesList();
-            refreshBalloon(pointId);
-        }
-
-        function refreshBalloon(pointId) {
-            var placemark = markers.find(m => {
-                var data = m.properties.get('pointData');
-                return data && data.id === pointId;
-            });
-            if (!placemark) return;
+            renderBottomPanel();
+            loadPoints();
             
-            var point = placemark.properties.get('pointData');
-            var departureInfo = departures[pointId];
-            var departButtonHtml;
-            
-            if (departureInfo) {
-                departButtonHtml = `<button onclick="resetDeparture(${point.id})" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; margin-top: 10px;">Выехал ${departureInfo.name}</button>`;
-            } else {
-                var escapedTitle = point.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                departButtonHtml = `<button onclick="showChoiceMenu(${point.id}, '${escapedTitle}')" style="background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px; margin-top: 10px;">Выехать за ${point.title} ым</button>`;
-            }
-            
-            var newContent = `
-                <div style="min-width: 200px; padding: 12px; box-sizing: border-box;">
-                    <b style="font-size: 16px; display: block; text-align: center;">${point.title}</b>
-                    <div style="color: #555; font-size: 14px; margin: 8px 0; text-align: center;">${point.address}</div>
-                    <small style="color: #999; display: block; text-align: center;">Статус: ${point.status}</small>
-                    
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px;">
-                        <button onclick="updateStatus(${point.id}, 'found')" style="background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Нашёл</button>
-                        <button onclick="updateStatus(${point.id}, 'not_found')" style="background: #212121; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Не нашёл</button>
-                        <button onclick="updateStatus(${point.id}, 'rented')" style="background: #9E9E9E; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; width: 80%; text-align: center; padding: 8px 12px;">Уехал в аренду</button>
-                    </div>
-                    
-                    ${departButtonHtml}
-                </div>
-            `;
-            
-            placemark.properties.set('balloonContent', newContent);
-            placemark.balloon.open();
+            setTimeout(function() {
+                var placemark = markers.find(function(m) {
+                    var d = m.properties.get('pointData');
+                    return d && d.id === pointId;
+                });
+                if (placemark) placemark.balloon.open();
+            }, 300);
         }
     </script>
 </body>
