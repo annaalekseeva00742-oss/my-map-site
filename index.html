@@ -154,6 +154,10 @@
             font-weight: bold;
             z-index: 1500;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            min-width: 250px;
+            max-width: 350px;
+            align-items: center;
+            box-sizing: border-box;
         }
 
         .drawing-indicator button {
@@ -162,7 +166,7 @@
             border: none;
             padding: 5px 10px;
             border-radius: 4px;
-            margin-left: 10px;
+            margin-left: 40px;
             cursor: pointer;
             font-weight: bold;
         }
@@ -199,7 +203,7 @@
     </div>
 
     <div class="drawing-indicator" id="drawingIndicator">
-        ✏️ Рисую зону... 
+        <span>Нарисуй зону</span>
         <button onclick="cancelZoneDrawing()">Отмена</button>
     </div>
 
@@ -271,13 +275,12 @@
             zonePoints = [];
             zonePointMarkers = [];
             
-            // 🔒 ЗАМОРАЖИВАЕМ КАРТУ: отключаем все жесты перемещения
             myMap.behaviors.disable('drag');
             myMap.behaviors.disable('multiTouch');
             myMap.behaviors.disable('scrollZoom');
             myMap.behaviors.disable('dblClickZoom');
             
-            document.getElementById('drawingIndicator').style.display = 'block';
+            document.getElementById('drawingIndicator').style.display = 'flex';
             myMap.container.getElement().style.cursor = 'crosshair';
         }
 
@@ -293,7 +296,6 @@
                 zoneLinePlacemark = null;
             }
             
-            // 🔓 ВОЗВРАЩАЕМ КАРТУ: включаем жесты обратно
             myMap.behaviors.enable('drag');
             myMap.behaviors.enable('multiTouch');
             myMap.behaviors.enable('scrollZoom');
@@ -304,7 +306,8 @@
         }
 
         function addZonePoint(coords) {
-            if (zonePoints.length >= 3) {
+            // ИЗМЕНЕНО: проверяем расстояние начиная с 2 точек (было >= 3)
+            if (zonePoints.length >= 2) {
                 var firstPoint = zonePoints[0];
                 var firstPixel = myMap.getGlobalPixelCenter(firstPoint);
                 var currentPixel = myMap.getGlobalPixelCenter(coords);
@@ -313,6 +316,7 @@
                 var dy = firstPixel[1] - currentPixel[1];
                 var distance = Math.sqrt(dx * dx + dy * dy);
                 
+                // Если попали на первую точку — замыкаем зону
                 if (distance < 25) {
                     finishZone();
                     return;
@@ -376,7 +380,6 @@
             myMap.geoObjects.add(polygon);
             zonePolygons.push(polygon);
             
-            // 🔓 ВОЗВРАЩАЕМ КАРТУ: включаем жесты обратно
             myMap.behaviors.enable('drag');
             myMap.behaviors.enable('multiTouch');
             myMap.behaviors.enable('scrollZoom');
