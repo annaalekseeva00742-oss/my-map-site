@@ -20,22 +20,24 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS points
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   title TEXT, address TEXT, lat REAL, lon REAL, status TEXT DEFAULT 'active')''')
+    
+    # НОВАЯ ТАБЛИЦА ДЛЯ ВЫЕЗДОВ
+    c.execute('''CREATE TABLE IF NOT EXISTS departures
+                 (point_id INTEGER PRIMARY KEY,
+                  point_title TEXT,
+                  person_name TEXT)''')
+    
     conn.commit()
     conn.close()
 init_db()
 
 def get_coordinates(address):
-    # Умная подготовка адреса для Смоленска
     address_clean = address.strip()
-    
-    # Список допустимых начал адреса, чтобы не дублировать слово "улица"
     street_prefixes = ('ул.', 'улица', 'пр.', 'проспект', 'пл.', 'площадь', 'пер.', 'переулок', 'ш.', 'шоссе', 'б-р', 'бульвар', 'наб.', 'набережная')
     
-    # Если адрес НЕ начинается с этих слов, добавляем "улица "
     if not address_clean.lower().startswith(street_prefixes):
         address_clean = "улица " + address_clean
     
-    # Формируем итоговый запрос для геокодера
     query = f"г. Смоленск, {address_clean}"
     
     url = "https://nominatim.openstreetmap.org/search"
@@ -71,7 +73,6 @@ def handle_message(message):
             bot.reply_to(message, "⚠️ Формат: Адрес или Координаты - Название\nПример: Ленина 14 - 666")
             return
 
-        # Проверка на координаты (например, 54.78, 32.04)
         coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', location_part)
         
         if coord_match:
@@ -85,7 +86,6 @@ def handle_message(message):
         if lat and lon:
             conn = sqlite3.connect('points.db')
             c = conn.cursor()
-            # Сохраняем в базу именно то, что ввел пользователь (без наших добавок, для красоты)
             c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (?, ?, ?, ?, 'active')",
                      (title, location_part, lat, lon))
             conn.commit()
@@ -118,8 +118,57 @@ def update_status():
     c = conn.cursor()
     if status == 'found':
         c.execute("DELETE FROM points WHERE id = ?", (point_id,))
+        c.execute("DELETE FROM departures WHERE point_id = ?", (point_id,))
     else:
         c.execute("UPDATE points SET status = ? WHERE id = ?", (status, point_id))
+        c.execute("DELETE FROM departures WHERE point_id = ?", (point_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+# НОВЫЕ ЭНДПОИНТЫ ДЛЯ ВЫЕЗДОВ
+
+@app.route('/get_departures')
+def get_departures():
+    conn = sqlite3.connect('points.db')
+    c = conn.cursor()
+    c.execute("SELECT point_id, point_title, person_name FROM departures")
+    departures = [{"point_id": row[0], "point_title": row[1], "person_name": row[2]} for row in c.fetchall()]
+    conn.close()
+    return jsonify(departures)
+
+@app.route('/add_departure', methods=['POST'])
+def add_departure():
+    data = request.json
+    point_id = data.get('point_id')
+    point_title = data.get('point_title')
+    person_name = data.get('person_name')
+    
+    conn = sqlite3.connect('points.db')
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO departures (point_id, point_title, person_name) VALUES (?, ?, ?)",
+             (point_id, point_title, person_name))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/remove_departure', methods=['POST'])
+def remove_departure():
+    data = request.json
+    point_id = data.get('point_id')
+    
+    conn = sqlite3.connect('points.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM departures WHERE point_id = ?", (point_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/clear_all_departures', methods=['POST'])
+def clear_all_departures():
+    conn = sqlite3.connect('points.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM departures")
     conn.commit()
     conn.close()
     return jsonify({"success": True})
