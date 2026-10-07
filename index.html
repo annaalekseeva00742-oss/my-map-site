@@ -28,6 +28,8 @@
             margin: 0 0 5px 0;
             text-align: center;
             font-size: 15px;
+            cursor: pointer;
+            user-select: none;
         }
         
         .info { 
@@ -72,7 +74,6 @@
             margin: 4px 0;
         }
 
-        /* МОДАЛЬНАЯ ПАНЕЛЬ ДЛЯ ВВОДА ИМЕНИ */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -139,7 +140,7 @@
     <div id="map"></div>
     
     <div class="controls">
-        <h3>Задачи на сегодня</h3>
+        <h3 onclick="onTasksHeaderClick()">Задачи на сегодня</h3>
         <div class="info">Всего: <span id="pointCount">0</span></div>
     </div>
 
@@ -148,7 +149,6 @@
         <div id="bottomDeparturesList"></div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЛЯ ВВОДА ИМЕНИ -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal-box">
             <h4>Введите имя</h4>
@@ -165,6 +165,10 @@
         var departures = {};
         var currentModalPointId = null;
         var currentModalPointTitle = null;
+        
+        // Временная фишка
+        var tasksHeaderClickCount = 0;
+        var tasksHeaderClickTimer = null;
 
         ymaps.ready(init);
 
@@ -176,6 +180,29 @@
                 controls: ['zoomControl', 'fullscreenControl']
             });
             loadPoints();
+        }
+
+        // Временная фишка: очистка всей истории при 3+ кликах
+        function onTasksHeaderClick() {
+            tasksHeaderClickCount++;
+            
+            if (tasksHeaderClickTimer) {
+                clearTimeout(tasksHeaderClickTimer);
+            }
+            
+            tasksHeaderClickTimer = setTimeout(function() {
+                tasksHeaderClickCount = 0;
+            }, 1000);
+            
+            if (tasksHeaderClickCount >= 3) {
+                departures = {};
+                saveDepartures();
+                renderBottomPanel();
+                updateLabelsOnly();
+                loadPoints();
+                tasksHeaderClickCount = 0;
+                alert('Вся история выездов очищена!');
+            }
         }
 
         function loadDepartures() {
@@ -252,7 +279,7 @@
 
                         if (isBooked) {
                             var labelLayout = ymaps.templateLayoutFactory.createClass(
-                                '<div style="background: black; color: white; font-size: 9px; font-weight: bold; padding: 3px 0; border-radius: 3px; text-align: center; width: 36px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
+                                '<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 0; border-radius: 3px; text-align: center; width: 36px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
                             );
                             var labelPlacemark = new ymaps.Placemark(
                                 [point.lat, point.lon],
@@ -351,7 +378,6 @@
             placemark.balloon.open();
         }
 
-        // ОТКРЫТИЕ МОДАЛЬНОГО ОКНА ДЛЯ ВВОДА ИМЕНИ
         function openCustomInputModal(pointId, pointTitle) {
             currentModalPointId = pointId;
             currentModalPointTitle = pointTitle;
@@ -362,13 +388,11 @@
             input.value = '';
             modal.style.display = 'flex';
             
-            // Фокус на поле ввода с задержкой, чтобы модалка успела отрисоваться
             setTimeout(function() {
                 input.focus();
             }, 100);
         }
 
-        // ПОДТВЕРЖДЕНИЕ ВВОДА
         function confirmModalInput() {
             var input = document.getElementById('modalInput');
             var name = input.value.trim();
@@ -381,24 +405,20 @@
                 return;
             }
             
-            // Закрываем модалку
             document.getElementById('modalOverlay').style.display = 'none';
             
-            // Выполняем действие
             selectName(currentModalPointId, currentModalPointTitle, name);
             
             currentModalPointId = null;
             currentModalPointTitle = null;
         }
 
-        // Закрытие модалки при клике на затемнение (вне окна)
         document.addEventListener('click', function(e) {
             if (e.target.id === 'modalOverlay') {
                 document.getElementById('modalOverlay').style.display = 'none';
             }
         });
 
-        // Enter в поле ввода = нажатие Ок
         document.addEventListener('DOMContentLoaded', function() {
             var input = document.getElementById('modalInput');
             input.addEventListener('keypress', function(e) {
@@ -451,7 +471,7 @@
                 var point = placemark.properties.get('pointData');
                 if (departures[point.id]) {
                     var labelLayout = ymaps.templateLayoutFactory.createClass(
-                        '<div style="background: black; color: white; font-size: 9px; font-weight: bold; padding: 3px 0; border-radius: 3px; text-align: center; width: 36px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
+                        '<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 0; border-radius: 3px; text-align: center; width: 36px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
                     );
                     var labelPlacemark = new ymaps.Placemark(
                         [point.lat, point.lon],
