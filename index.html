@@ -172,7 +172,7 @@
         ymaps.ready(init);
 
         function init() {
-            loadDepartures();
+            loadDeparturesFromServer();
             myMap = new ymaps.Map("map", {
                 center: [54.7818, 32.0401],
                 zoom: 12,
@@ -193,26 +193,32 @@
             }, 1000);
             
             if (tasksHeaderClickCount >= 3) {
-                departures = {};
-                saveDepartures();
-                renderBottomPanel();
-                updateLabelsOnly();
-                loadPoints();
-                tasksHeaderClickCount = 0;
-                alert('Вся история выездов очищена!');
+                fetch(API_URL + '/clear_all_departures', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                }).then(function(response) { return response.json(); }).then(function(data) {
+                    if (data.success) {
+                        departures = {};
+                        renderBottomPanel();
+                        updateLabelsOnly();
+                        loadPoints();
+                        tasksHeaderClickCount = 0;
+                        alert('Вся история выездов очищена!');
+                    }
+                });
             }
         }
 
-        function loadDepartures() {
-            var saved = localStorage.getItem('departures');
-            if (saved) {
-                try { departures = JSON.parse(saved); } catch(e) { departures = {}; }
-            }
-            renderBottomPanel();
-        }
-
-        function saveDepartures() {
-            localStorage.setItem('departures', JSON.stringify(departures));
+        function loadDeparturesFromServer() {
+            fetch(API_URL + '/get_departures')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    departures = {};
+                    data.forEach(function(d) {
+                        departures[d.point_id] = { title: d.point_title, name: d.person_name };
+                    });
+                    renderBottomPanel();
+                });
         }
 
         function renderBottomPanel() {
@@ -254,7 +260,6 @@
         function getMarkerStyle(status) {
             if (status === 'active') return { color: '#ff3b30', emoji: '🛴' };
             if (status === 'not_found') return { color: '#333333', emoji: '🛴' };
-            // ИЗМЕНЕНО: цвет совпадает с кнопкой "Уехал в аренду" (#9E9E9E)
             if (status === 'rented') return { color: '#9E9E9E', emoji: '🛴' };
             return { color: '#ff3b30', emoji: '🛴' };
         }
@@ -277,7 +282,6 @@
                         var isBooked = departures[point.id] !== undefined;
 
                         if (isBooked) {
-                            // ИЗМЕНЕНО: ширина увеличена с 36px до 44px (добавлено по 4px с каждой стороны)
                             var labelLayout = ymaps.templateLayoutFactory.createClass(
                                 '<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 4px; border-radius: 3px; text-align: center; width: 44px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
                             );
@@ -342,11 +346,18 @@
             }).then(function(response) { return response.json(); }).then(function(data) {
                 if (data.success) {
                     if (departures[pointId]) {
-                        delete departures[pointId];
-                        saveDepartures();
-                        renderBottomPanel();
+                        fetch(API_URL + '/remove_departure', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ point_id: pointId })
+                        }).then(function() {
+                            delete departures[pointId];
+                            renderBottomPanel();
+                            loadPoints();
+                        });
+                    } else {
+                        loadPoints();
                     }
-                    loadPoints();
                 }
             });
         }
@@ -430,37 +441,51 @@
         });
 
         function selectName(pointId, pointTitle, name) {
-            departures[pointId] = { title: pointTitle, name: name };
-            saveDepartures();
-            renderBottomPanel();
-            
-            updateLabelsOnly();
-            
-            var placemark = markers.find(function(m) {
-                var d = m.properties.get('pointData');
-                return d && d.id === pointId;
+            fetch(API_URL + '/add_departure', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    point_id: pointId, 
+                    point_title: pointTitle, 
+                    person_name: name 
+                })
+            }).then(function(response) { return response.json(); }).then(function(data) {
+                if (data.success) {
+                    departures[pointId] = { title: pointTitle, name: name };
+                    renderBottomPanel();
+                    loadPoints();
+                    
+                    setTimeout(function() {
+                        var placemark = markers.find(function(m) {
+                            var d = m.properties.get('pointData');
+                            return d && d.id === pointId;
+                        });
+                        if (placemark) placemark.balloon.open();
+                    }, 300);
+                }
             });
-            if (placemark) {
-                placemark.properties.set('balloonContent', buildBalloonContent(placemark.properties.get('pointData'), true));
-                placemark.balloon.open();
-            }
         }
 
         function resetDeparture(pointId) {
-            delete departures[pointId];
-            saveDepartures();
-            renderBottomPanel();
-            
-            updateLabelsOnly();
-            
-            var placemark = markers.find(function(m) {
-                var d = m.properties.get('pointData');
-                return d && d.id === pointId;
+            fetch(API_URL + '/remove_departure', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ point_id: pointId })
+            }).then(function(response) { return response.json(); }).then(function(data) {
+                if (data.success) {
+                    delete departures[pointId];
+                    renderBottomPanel();
+                    loadPoints();
+                    
+                    setTimeout(function() {
+                        var placemark = markers.find(function(m) {
+                            var d = m.properties.get('pointData');
+                            return d && d.id === pointId;
+                        });
+                        if (placemark) placemark.balloon.open();
+                    }, 300);
+                }
             });
-            if (placemark) {
-                placemark.properties.set('balloonContent', buildBalloonContent(placemark.properties.get('pointData'), false));
-                placemark.balloon.open();
-            }
         }
 
         function updateLabelsOnly() {
@@ -470,7 +495,6 @@
             markers.forEach(function(placemark) {
                 var point = placemark.properties.get('pointData');
                 if (departures[point.id]) {
-                    // ИЗМЕНЕНО: ширина увеличена с 36px до 44px (добавлено по 4px с каждой стороны)
                     var labelLayout = ymaps.templateLayoutFactory.createClass(
                         '<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 4px; border-radius: 3px; text-align: center; width: 44px; box-sizing: border-box; line-height: 1.2;">Выехали</div>'
                     );
