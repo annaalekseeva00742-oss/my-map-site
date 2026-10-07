@@ -247,11 +247,20 @@
 
         function init() {
             loadDeparturesFromServer();
+            
+            // ИЗМЕНЕНО: тип карты "гибрид" (спутник + названия улиц)
             myMap = new ymaps.Map("map", {
                 center: [54.7818, 32.0401],
                 zoom: 12,
+                type: 'yandex#hybrid',  // Гибрид: спутник + гео-объекты
                 controls: ['zoomControl', 'fullscreenControl']
             });
+            
+            // ИЗМЕНЕНО: включаем multiTouch с поворотом
+            myMap.behaviors.enable('multiTouch', {
+                rotate: true  // Разрешаем поворот карты двумя пальцами
+            });
+            
             loadPoints();
             
             myMap.events.add('click', function(e) {
@@ -293,6 +302,7 @@
             zonePoints = [];
             zonePointMarkers = [];
             
+            // Отключаем все behaviors во время рисования
             myMap.behaviors.disable('drag');
             myMap.behaviors.disable('multiTouch');
             myMap.behaviors.disable('scrollZoom');
@@ -314,8 +324,9 @@
                 zoneLinePlacemark = null;
             }
             
+            // Включаем behaviors обратно
             myMap.behaviors.enable('drag');
-            myMap.behaviors.enable('multiTouch');
+            myMap.behaviors.enable('multiTouch', { rotate: true });
             myMap.behaviors.enable('scrollZoom');
             myMap.behaviors.enable('dblClickZoom');
             
@@ -324,9 +335,6 @@
         }
 
         function addZonePoint(coords) {
-            // ИЗМЕНЕНО: убрана проверка расстояния до первой точки
-            // Теперь точки можно ставить сколько угодно
-            
             zonePoints.push(coords);
             
             var pointMarker = new ymaps.Placemark(coords, {}, {
@@ -357,7 +365,6 @@
             myMap.geoObjects.add(zoneLinePlacemark);
         }
 
-        // НОВАЯ ФУНКЦИЯ: замыкание зоны по кнопке "Ок"
         function finishZoneWithButton() {
             if (zonePoints.length < 3) {
                 alert('Нужно минимум 3 точки для создания зоны!');
@@ -394,8 +401,9 @@
             myMap.geoObjects.add(polygon);
             zonePolygons.push(polygon);
             
+            // Включаем behaviors обратно
             myMap.behaviors.enable('drag');
-            myMap.behaviors.enable('multiTouch');
+            myMap.behaviors.enable('multiTouch', { rotate: true });
             myMap.behaviors.enable('scrollZoom');
             myMap.behaviors.enable('dblClickZoom');
             
