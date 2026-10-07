@@ -181,9 +181,33 @@
             font-size: 13px;
         }
 
-        .drawing-indicator .btn-ok {
-            background: #4CAF50;
-            color: white;
+        /* Кнопка геолокации */
+        .geolocation-btn {
+            position: absolute;
+            bottom: 200px;
+            right: 15px;
+            z-index: 1000;
+            background: white;
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .geolocation-btn:active {
+            background: #f0f0f0;
+        }
+
+        /* Анимация пульсации для точки геолокации */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(3); opacity: 0; }
         }
     </style>
 </head>
@@ -194,6 +218,9 @@
         <h3 onclick="onTasksHeaderClick()">Задачи на сегодня</h3>
         <div class="info">Всего: <span id="pointCount">0</span></div>
     </div>
+
+    <!-- Кнопка "Моё местоположение" -->
+    <button class="geolocation-btn" onclick="centerOnMe()" title="Моё местоположение">📍</button>
 
     <div class="bottom-panel" id="bottomPanel" style="display: none;">
         <button class="close-btn" onclick="closeBottomPanel()">✕</button>
@@ -210,7 +237,7 @@
 
     <div class="modal-overlay" id="zoneModalOverlay">
         <div class="modal-box">
-            <h4>Начерти зону </h4>
+            <h4>Начерти зону</h4>
             <p style="color: #666; font-size: 13px; margin: 0 0 15px 0;">Кликай по карте, чтобы ставить точки. Когда закончишь — нажми "Ок".</p>
             <button onclick="startZoneDrawing()">Начать</button>
             <button class="btn-secondary" onclick="closeZoneModal()">Отмена</button>
@@ -221,7 +248,7 @@
         <span class="indicator-text">Нарисуй зону</span>
         <div class="indicator-buttons">
             <button onclick="cancelZoneDrawing()">Отмена</button>
-            <button class="btn-ok" onclick="finishZoneWithButton()">Ок</button>
+            <button onclick="finishZoneWithButton()">Ок</button>
         </div>
     </div>
 
@@ -242,26 +269,35 @@
         
         var tasksHeaderClickCount = 0;
         var tasksHeaderClickTimer = null;
+        
+        // Переменные для геолокации
+        var myLocationMarker = null;
+        var myLocationPulse = null;
+        var myLocationCoords = null;
 
         ymaps.ready(init);
 
         function init() {
             loadDeparturesFromServer();
             
-            // ИЗМЕНЕНО: тип карты "гибрид" (спутник + названия улиц)
+            // Гибридный тип карты (спутник + названия)
             myMap = new ymaps.Map("map", {
                 center: [54.7818, 32.0401],
                 zoom: 12,
-                type: 'yandex#hybrid',  // Гибрид: спутник + гео-объекты
+                type: 'yandex#hybrid',
                 controls: ['zoomControl', 'fullscreenControl']
             });
             
-            // ИЗМЕНЕНО: включаем multiTouch с поворотом
-            myMap.behaviors.enable('multiTouch', {
-                rotate: true  // Разрешаем поворот карты двумя пальцами
-            });
+            // 🔥 ВКЛЮЧАЕМ ВСЕ НУЖНЫЕ BEHAVIORS ДЛЯ ПОВОРОТА
+            // По умолчанию в Яндекс.Картах multiTouch работает как зум + поворот
+            // Но нужно убедиться что rotate включен
+            myMap.behaviors.enable('drag');
+            myMap.behaviors.enable('multiTouch');
+            myMap.behaviors.enable('scrollZoom');
+            myMap.behaviors.enable('dblClickZoom');
             
             loadPoints();
+            initGeolocation();
             
             myMap.events.add('click', function(e) {
                 if (!isDrawingZone) return;
@@ -269,6 +305,109 @@
                 var coords = e.get('coords');
                 addZonePoint(coords);
             });
+        }
+
+        // 📍 ИНИЦИАЛИЗАЦИЯ ГЕОЛОКАЦИИ
+        function initGeolocation() {
+            // Проверяем поддержку геолокации браузером
+            if (!navigator.geolocation) {
+                console.log('Геолокация не поддерживается');
+                return;
+            }
+            
+            // Запрашиваем местоположение
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    var coords = [position.coords.latitude, position.coords.longitude];
+                    myLocationCoords = coords;
+                    showMyLocation(coords);
+                },
+                function(error) {
+                    console.log('Ошибка геолокации:', error.message);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 60000
+                }
+            );
+            
+            // Также следим за изменением позиции (для мобильных)
+            navigator.geolocation.watchPosition(
+                function(position) {
+                    var coords = [position.coords.latitude, position.coords.longitude];
+                    myLocationCoords = coords;
+                    updateMyLocation(coords);
+                },
+                function(error) {
+                    console.log('Ошибка watchPosition:', error.message);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 60000
+                }
+            );
+        }
+
+        // 📍 ПОКАЗЫВАЕМ ТОЧКУ ГЕОЛОКАЦИИ НА КАРТЕ
+        function showMyLocation(coords) {
+            // Удаляем старые маркеры если есть
+            if (myLocationMarker) {
+                myMap.geoObjects.remove(myLocationMarker);
+            }
+            if (myLocationPulse) {
+                myMap.geoObjects.remove(myLocationPulse);
+            }
+            
+            // Создаём пульсирующий круг (внешний)
+            myLocationPulse = new ymaps.Placemark(coords, {}, {
+                iconLayout: ymaps.templateLayoutFactory.createClass(
+                    '<div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(66, 133, 244, 0.3); animation: pulse 2s infinite;"></div>'
+                ),
+                iconShape: { type: 'Circle', coordinates: [20, 20], radius: 20 }
+            });
+            myMap.geoObjects.add(myLocationPulse);
+            
+            // Создаём синюю точку (внутренняя)
+            myLocationMarker = new ymaps.Placemark(coords, {}, {
+                iconLayout: ymaps.templateLayoutFactory.createClass(
+                    '<div style="width: 16px; height: 16px; background: #4285F4; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>'
+                ),
+                iconShape: { type: 'Circle', coordinates: [8, 8], radius: 8 }
+            });
+            myMap.geoObjects.add(myLocationMarker);
+        }
+
+        // 📍 ОБНОВЛЯЕМ ПОЗИЦИЮ
+        function updateMyLocation(coords) {
+            if (myLocationMarker) {
+                myLocationMarker.geometry.setCoordinates(coords);
+            }
+            if (myLocationPulse) {
+                myLocationPulse.geometry.setCoordinates(coords);
+            }
+        }
+
+        // 📍 ЦЕНТРИРУЕМ КАРТУ НА СЕБЯ
+        function centerOnMe() {
+            if (myLocationCoords) {
+                myMap.setCenter(myLocationCoords, 16);
+            } else {
+                // Если координаты ещё не получены — запрашиваем снова
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        var coords = [position.coords.latitude, position.coords.longitude];
+                        myLocationCoords = coords;
+                        showMyLocation(coords);
+                        myMap.setCenter(coords, 16);
+                    },
+                    function(error) {
+                        alert('Не удалось получить ваше местоположение. Проверьте настройки геолокации.');
+                    },
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            }
         }
 
         function onTasksHeaderClick() {
@@ -302,7 +441,6 @@
             zonePoints = [];
             zonePointMarkers = [];
             
-            // Отключаем все behaviors во время рисования
             myMap.behaviors.disable('drag');
             myMap.behaviors.disable('multiTouch');
             myMap.behaviors.disable('scrollZoom');
@@ -324,9 +462,8 @@
                 zoneLinePlacemark = null;
             }
             
-            // Включаем behaviors обратно
             myMap.behaviors.enable('drag');
-            myMap.behaviors.enable('multiTouch', { rotate: true });
+            myMap.behaviors.enable('multiTouch');
             myMap.behaviors.enable('scrollZoom');
             myMap.behaviors.enable('dblClickZoom');
             
@@ -401,9 +538,8 @@
             myMap.geoObjects.add(polygon);
             zonePolygons.push(polygon);
             
-            // Включаем behaviors обратно
             myMap.behaviors.enable('drag');
-            myMap.behaviors.enable('multiTouch', { rotate: true });
+            myMap.behaviors.enable('multiTouch');
             myMap.behaviors.enable('scrollZoom');
             myMap.behaviors.enable('dblClickZoom');
             
