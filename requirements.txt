@@ -2,3 +2,4 @@ pyTelegramBotAPI
 requests
 flask
 flask-cors
+psycopg2-binary==2.9.9
