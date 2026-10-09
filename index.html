@@ -70,36 +70,39 @@
         var currentModalPointId = null, currentModalPointTitle = null;
         var isDrawingZone = false, zonePoints = [], zoneLinePlacemark = null, zonePointMarkers = [];
         var tasksHeaderClickCount = 0, tasksHeaderClickTimer = null;
-        var infoClickCount = 0, infoClickTimer = null, isHybridMode = true;
+        var infoClickCount = 0, infoClickTimer = null, isHybridMode = false;
 
         ymaps.ready(init);
 
         function init() {
             loadDeparturesFromServer();
-            myMap = new ymaps.Map("map", { center: [54.7818, 32.0401], zoom: 12, type: 'yandex#hybrid', controls: ['zoomControl', 'fullscreenControl'] });
+            myMap = new ymaps.Map("map", { center: [54.7818, 32.0401], zoom: 12, type: 'yandex#map', controls: ['zoomControl', 'fullscreenControl'] });
             myMap.behaviors.enable('drag'); myMap.behaviors.enable('multiTouch'); myMap.behaviors.enable('scrollZoom'); myMap.behaviors.enable('dblClickZoom');
             loadPoints();
             loadParkings();
             myMap.events.add('click', function(e) { if (!isDrawingZone) return; addZonePoint(e.get('coords')); });
         }
 
-        // --- ЛОГИКА САМОКАТОВ ---
-        function createScooterIcon() {
+        // === ИКОНКА САМОКАТА (картинка в цветном кружке) ===
+        function createScooterIcon(statusColor) {
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">' +
+                '<circle cx="18" cy="18" r="18" fill="' + statusColor + '"/>' +
+                '<image href="https://yandex67.github.io/my-map-site/sam.png" x="6" y="6" width="24" height="24" preserveAspectRatio="xMidYMid meet"/>' +
+                '</svg>';
             return {
-                iconLayout: ymaps.templateLayoutFactory.createClass(
-                    '<div style="width: 36px; height: 36px; background-image: url(\'https://yandex67.github.io/my-map-site/sam.png\'); background-size: contain; background-repeat: no-repeat; background-position: center;"></div>'
-                ),
+                iconLayout: ymaps.templateLayoutFactory.createClass('<div style="width:36px; height:36px;">' + svg + '</div>'),
                 iconShape: { type: 'Circle', coordinates: [18, 18], radius: 18 }
             };
         }
 
         function getMarkerStyle(status) {
-            if (status === 'active') return '#ff3b30';
+            if (status === 'active') return '#f1f0ee';
             if (status === 'not_found') return '#333333';
             if (status === 'rented') return '#9E9E9E';
-            return '#ff3b30';
+            return '#f1f0ee';
         }
 
+        // === САМОКАТЫ ===
         function loadPoints() {
             labelMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
             labelMarkers = [];
@@ -109,7 +112,7 @@
                 document.getElementById('pointCount').textContent = data.length;
                 data.forEach(function(point) {
                     var color = getMarkerStyle(point.status);
-                    var iconOptions = createScooterIcon();
+                    var iconOptions = createScooterIcon(color);
                     var isBooked = departures[point.id] !== undefined;
                     if (isBooked) {
                         var labelLayout = ymaps.templateLayoutFactory.createClass('<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 4px; border-radius: 3px; text-align: center; width: 44px; box-sizing: border-box; line-height: 1.2;">Выехали</div>');
@@ -174,7 +177,7 @@
             pm.properties.set('balloonContent', h); pm.balloon.open();
         }
 
-        // --- ЛОГИКА ПАРКОВОК ---
+        // === ПАРКОВКИ ===
         function createParkingIcon() {
             return {
                 iconLayout: ymaps.templateLayoutFactory.createClass('<div style="width: 36px; height: 36px; font-size: 26px; text-align: center; line-height: 36px;">🅿️</div>'),
@@ -184,14 +187,14 @@
 
         function createParkingLabels(lat, lon, available, dead, pId) {
             var layout = ymaps.templateLayoutFactory.createClass(
-                `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                    <div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ${available}</div>
-                    <div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ${dead}</div>
-                </div>`
+                '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">' +
+                    '<div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ' + available + '</div>' +
+                    '<div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ' + dead + '</div>' +
+                '</div>'
             );
             return new ymaps.Placemark([lat, lon], {}, {
                 iconLayout: layout,
-                iconOffset: [-45, -45], // Центрируем по ширине (~90px) и поднимаем над иконкой
+                iconOffset: [-45, -45],
                 iconShape: { type: 'Rectangle', coordinates: [[0, 0], [90, 40]] }
             });
         }
@@ -218,37 +221,36 @@
         }
 
         function buildParkingBalloon(p) {
-            var esc = p.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            return `<div style="min-width: 200px; padding: 12px; box-sizing: border-box; text-align: center;">
-                <b style="font-size: 16px; display: block;">${p.title}</b>
-                <div style="color: #555; font-size: 14px; margin: 8px 0;">${p.address}</div>
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-                    <div style="background: #4CAF50; color: white; padding: 8px; border-radius: 4px; font-weight: bold;">В доступе: ${p.available}</div>
-                    <div style="background: #f44336; color: white; padding: 8px; border-radius: 4px; font-weight: bold;">Севшие: ${p.dead}</div>
-                    <button onclick="event.stopPropagation(); startEditParking(${p.id}, '${esc}')" style="background: #9E9E9E; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">Изменить</button>
-                </div>
-            </div>`;
+            return '<div style="min-width: 200px; padding: 12px; box-sizing: border-box; text-align: center;">' +
+                '<b style="font-size: 16px; display: block;">' + p.title + '</b>' +
+                '<div style="color: #555; font-size: 14px; margin: 8px 0;">' + p.address + '</div>' +
+                '<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">' +
+                    '<div style="background: #4CAF50; color: white; padding: 8px; border-radius: 4px; font-weight: bold;">В доступе: ' + p.available + '</div>' +
+                    '<div style="background: #f44336; color: white; padding: 8px; border-radius: 4px; font-weight: bold;">Севшие: ' + p.dead + '</div>' +
+                    '<button onclick="event.stopPropagation(); startEditParking(' + p.id + ')" style="background: #9E9E9E; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">Изменить</button>' +
+                '</div>' +
+            '</div>';
         }
 
-        function startEditParking(id, title) {
+        function startEditParking(id) {
             var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
             if (!pm) return;
             var p = pm.properties.get('parkingData');
-            var html = `<div style="min-width: 200px; padding: 12px; box-sizing: border-box; text-align: center;">
-                <b style="font-size: 16px; display: block;">${p.title}</b>
-                <div style="color: #555; font-size: 14px; margin: 8px 0;">${p.address}</div>
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-                    <div style="position: relative;">
-                        <button id="btn_avail_${id}" onclick="activateInput('avail', ${id})" style="background: white; color: #333; border: 2px solid #333; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">В доступе</button>
-                        <input id="inp_avail_${id}" type="text" style="display: none; width: 100%; padding: 8px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;" oninput="checkOkBtn(${id})">
-                    </div>
-                    <div style="position: relative;">
-                        <button id="btn_dead_${id}" onclick="activateInput('dead', ${id})" style="background: white; color: #333; border: 2px solid #333; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">Севшие</button>
-                        <input id="inp_dead_${id}" type="text" style="display: none; width: 100%; padding: 8px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;" oninput="checkOkBtn(${id})">
-                    </div>
-                    <button id="okBtn_${id}" onclick="saveParking(${id}, '${p.title}')" style="display: none; background: #4CAF50; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 5px;">ОК</button>
-                </div>
-            </div>`;
+            var html = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box; text-align: center;">' +
+                '<b style="font-size: 16px; display: block;">' + p.title + '</b>' +
+                '<div style="color: #555; font-size: 14px; margin: 8px 0;">' + p.address + '</div>' +
+                '<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">' +
+                    '<div style="position: relative;">' +
+                        '<button id="btn_avail_' + id + '" onclick="activateInput(\'avail\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">В доступе</button>' +
+                        '<input id="inp_avail_' + id + '" type="text" style="display: none; width: 100%; padding: 8px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;" oninput="checkOkBtn(' + id + ')">' +
+                    '</div>' +
+                    '<div style="position: relative;">' +
+                        '<button id="btn_dead_' + id + '" onclick="activateInput(\'dead\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">Севшие</button>' +
+                        '<input id="inp_dead_' + id + '" type="text" style="display: none; width: 100%; padding: 8px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;" oninput="checkOkBtn(' + id + ')">' +
+                    '</div>' +
+                    '<button id="okBtn_' + id + '" onclick="saveParking(' + id + ')" style="display: none; background: #4CAF50; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 5px;">ОК</button>' +
+                '</div>' +
+            '</div>';
             pm.properties.set('balloonContent', html);
             pm.balloon.open();
         }
@@ -272,11 +274,10 @@
             }
         }
 
-        function saveParking(id, title) {
+        function saveParking(id) {
             var inpAvail = document.getElementById('inp_avail_' + id);
             var inpDead = document.getElementById('inp_dead_' + id);
             
-            // Если поле не трогали, берем старое значение (найдем его в массиве)
             var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
             var oldData = pm ? pm.properties.get('parkingData') : {available: '?', dead: '?'};
             
@@ -289,12 +290,12 @@
                 body: JSON.stringify({ id: id, available: newAvail, dead: newDead })
             }).then(function(r) { return r.json(); }).then(function(data) {
                 if (data.success) {
-                    loadParkings(); // Перезагружаем парковки, чтобы обновить и метки, и плашки
+                    loadParkings();
                 }
             });
         }
 
-        // --- ОБЩИЕ ФУНКЦИИ ---
+        // === ОБЩИЕ ФУНКЦИИ ===
         function onTasksHeaderClick() {
             tasksHeaderClickCount++;
             if (tasksHeaderClickTimer) clearTimeout(tasksHeaderClickTimer);
