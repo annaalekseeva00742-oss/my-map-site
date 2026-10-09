@@ -25,7 +25,6 @@ def init_db():
                  (id SERIAL PRIMARY KEY, title TEXT, address TEXT, lat REAL, lon REAL, status TEXT DEFAULT 'active')''')
     c.execute('''CREATE TABLE IF NOT EXISTS departures
                  (point_id INTEGER PRIMARY KEY, point_title TEXT, person_name TEXT)''')
-    # НОВАЯ ТАБЛИЦА ДЛЯ ПАРКОВОК
     c.execute('''CREATE TABLE IF NOT EXISTS parkings
                  (id SERIAL PRIMARY KEY, title TEXT UNIQUE, address TEXT, lat REAL, lon REAL, 
                   available_count TEXT DEFAULT '?', dead_count TEXT DEFAULT '?')''')
@@ -52,6 +51,13 @@ def get_coordinates(address):
         pass
     return None, None
 
+def parse_coordinates(text):
+    """Пытается распарсить координаты из строки. Возвращает (lat, lon) или (None, None)."""
+    coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', text)
+    if coord_match:
+        return float(coord_match.group(1)), float(coord_match.group(2))
+    return None, None
+
 bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(func=lambda message: True)
@@ -60,82 +66,101 @@ def handle_message(message):
         return 
 
     text = message.text.strip()
+    text_lower = text.lower()
     
-    # --- ЛОГИКА ПАРКОВОК ---
-    if text.startswith('Создать P -'):
-        parts = text.split(' - ', 2)
-        if len(parts) == 3:
-            location_part = parts[1].strip()
-            title = parts[2].strip()
-            
-            coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', location_part)
-            if coord_match:
-                lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
-            else:
-                bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
-                lat, lon = get_coordinates(location_part)
-                
-            if lat and lon “:
-                conn = get_db_connection()
-                c = conn.cursor()
-                try:
-                    c.execute("INSERT INTO parkings (title, address, lat, lon) VALUES (%s, %s, %s, %s)", (title, location_part, lat, lon))
-                    conn.commit()
-                    bot.reply_to(message, f"✅ Парковка '{title}' успешно добавлена!")
-                except psycopg2.IntegrityError:
-                    bot.reply_to(message, "⚠️ Парковка с таким названием уже существует.")
-                conn.close()
-            else:
-                bot.reply_to(message, f"❌ Не удалось найти адрес: '{location_part}'")
-        else:
-            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - Ленина 14 - Парковка Центр")
-            
-    elif text.startswith('Удалить P -'):
-        parts = text.split(' - ', 1)
-        if len(parts) == 2:
-            title = parts[1].strip()
+    # === КОМАНДА: СОЗДАТЬ ПАРКОВКУ ===
+    if text_lower.startswith('создать p'):
+        remainder = text[len('создать p'):].strip()
+        
+        if not remainder.startswith('-'):
+            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес или Координаты] - [Название]\nПример: Создать P - Ленина 14 - Парковка Центр")
+            return
+        
+        remainder = remainder[1:].strip()
+        
+        if ' - ' not in remainder:
+            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - 54.777, 32.052 - Ермолино Центр")
+            return
+        
+        parts = remainder.split(' - ', 1)
+        location_part = parts[0].strip()
+        title = parts[1].strip()
+        
+        if not location_part or not title:
+            bot.reply_to(message, "⚠️ Пустые поля. Формат: Создать P - [Адрес] - [Название]")
+            return
+        
+        lat, lon = parse_coordinates(location_part)
+        if lat is None:
+            bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
+            lat, lon = get_coordinates(location_part)
+        
+        if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
-            c.execute("DELETE FROM parkings WHERE title = %s", (title,))
-            conn.commit()
-            if c.rowcount > 0:
-                bot.reply_to(message, f"🗑️ Парковка '{title}' удалена.")
-            else:
-                bot.reply_to(message, f"❌ Парковка '{title}' не найдена.")
+            try:
+                c.execute("INSERT INTO parkings (title, address, lat, lon) VALUES (%s, %s, %s, %s)", 
+                         (title, location_part, lat, lon))
+                conn.commit()
+                bot.reply_to(message, f"✅ Парковка '{title}' успешно добавлена!")
+            except psycopg2.IntegrityError:
+                bot.reply_to(message, f"⚠️ Парковка с названием '{title}' уже существует.")
             conn.close()
         else:
-            bot.reply_to(message, "⚠️ Формат: Удалить P - [Название]")
+            bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
+        return
 
-    # --- ЛОГИКА САМОКАТОВ (без изменений) ---
-    elif '-' in text:
+    # === КОМАНДА: УДАЛИТЬ ПАРКОВКУ ===
+    if text_lower.startswith('удалить p'):
+        remainder = text[len('удалить p'):].strip()
+        if not remainder.startswith('-'):
+            bot.reply_to(message, "⚠️ Формат: Удалить P - [Название]")
+            return
+        title = remainder[1:].strip()
+        if not title:
+            bot.reply_to(message, "⚠️ Пустое название. Формат: Удалить P - [Название]")
+            return
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM parkings WHERE title = %s", (title,))
+        conn.commit()
+        if c.rowcount > 0:
+            bot.reply_to(message, f"🗑️ Парковка '{title}' удалена.")
+        else:
+            bot.reply_to(message, f"❌ Парковка '{title}' не найдена.")
+        conn.close()
+        return
+
+    # === САМОКАТЫ ===
+    if '-' in text:
         parts = text.rsplit('-', 1) 
         location_part = parts[0].strip()
         title = parts[1].strip()
         
         if not location_part or not title:
-            bot.reply_to(message, "⚠️ Формат: Адрес или Координаты - Название\nПример: Ленина 14 - 666")
+            bot.reply_to(message, "⚠️ Формат: Адрес - Название\nПример: Ленина 14 - 666")
             return
 
-        coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', location_part)
-        if coord_match:
-            lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
-            bot.reply_to(message, f"✅ Координаты приняты!\n📍 {title}")
-        else:
+        lat, lon = parse_coordinates(location_part)
+        if lat is None:
             bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
             lat, lon = get_coordinates(location_part)
             
         if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
-            c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (%s, %s, %s, %s, 'active')", (title, location_part, lat, lon))
+            c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (%s, %s, %s, %s, 'active')",
+                     (title, location_part, lat, lon))
             conn.commit()
             conn.close()
             bot.reply_to(message, f"✅ Точка '{title}' успешно добавлена на карту!")
         else:
-            bot.reply_to(message, f"❌ Не удалось найти адрес: '{location_part}' в Смоленске.")
+            bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
     else:
-        bot.reply_to(message, "⚠️ Формат самоката: Адрес - Название\n⚠️ Формат парковки: Создать P - Адрес - Название")
+        bot.reply_to(message, "⚠️ Неизвестная команда.\n\nФорматы:\n• Самокат: Адрес - Название\n• Парковка: Создать P - Адрес - Название\n• Удалить: Удалить P - Название")
 
+# === API ЭНДПОИНТЫ ===
 @app.route('/')
 def serve_website():
     return "Бот работает! API доступно."
@@ -206,7 +231,6 @@ def clear_all_departures():
     conn.close()
     return jsonify({"success": True})
 
-# --- НОВЫЕ API ДЛЯ ПАРКОВОК ---
 @app.route('/get_parkings')
 def get_parkings():
     conn = get_db_connection()
