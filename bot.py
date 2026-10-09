@@ -15,35 +15,30 @@ DATABASE_URL = os.environ.get("postgresql://mapbotuser:r47l5ou0pDueVnus4tiD3d2w7
 app = Flask(__name__)
 CORS(app)
 
-# Функция для получения подключения к БД
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
-    # Создаем таблицу точек (SERIAL - это автоинкремент в PostgreSQL)
     c.execute('''CREATE TABLE IF NOT EXISTS points
-                 (id SERIAL PRIMARY KEY,
-                  title TEXT, address TEXT, lat REAL, lon REAL, status TEXT DEFAULT 'active')''')
-    # Создаем таблицу выездов
+                 (id SERIAL PRIMARY KEY, title TEXT, address TEXT, lat REAL, lon REAL, status TEXT DEFAULT 'active')''')
     c.execute('''CREATE TABLE IF NOT EXISTS departures
-                 (point_id INTEGER PRIMARY KEY,
-                  point_title TEXT,
-                  person_name TEXT)''')
+                 (point_id INTEGER PRIMARY KEY, point_title TEXT, person_name TEXT)''')
+    # НОВАЯ ТАБЛИЦА ДЛЯ ПАРКОВОК
+    c.execute('''CREATE TABLE IF NOT EXISTS parkings
+                 (id SERIAL PRIMARY KEY, title TEXT UNIQUE, address TEXT, lat REAL, lon REAL, 
+                  available_count TEXT DEFAULT '?', dead_count TEXT DEFAULT '?')''')
     conn.commit()
     conn.close()
 
-# Инициализируем таблицы при запуске
 init_db()
 
 def get_coordinates(address):
     address_clean = address.strip()
     street_prefixes = ('ул.', 'улица', 'пр.', 'проспект', 'пл.', 'площадь', 'пер.', 'переулок', 'ш.', 'шоссе', 'б-р', 'бульвар', 'наб.', 'набережная')
-    
     if not address_clean.lower().startswith(street_prefixes):
         address_clean = "улица " + address_clean
-    
     query = f"г. Смоленск, {address_clean}"
     url = "https://nominatim.openstreetmap.org/search"
     params = {"q": query, "format": "json", "limit": 1}
@@ -66,7 +61,53 @@ def handle_message(message):
 
     text = message.text.strip()
     
-    if '-' in text:
+    # --- ЛОГИКА ПАРКОВОК ---
+    if text.startswith('Создать P -'):
+        parts = text.split(' - ', 2)
+        if len(parts) == 3:
+            location_part = parts[1].strip()
+            title = parts[2].strip()
+            
+            coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', location_part)
+            if coord_match:
+                lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
+            else:
+                bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
+                lat, lon = get_coordinates(location_part)
+                
+            if lat and lon “:
+                conn = get_db_connection()
+                c = conn.cursor()
+                try:
+                    c.execute("INSERT INTO parkings (title, address, lat, lon) VALUES (%s, %s, %s, %s)", (title, location_part, lat, lon))
+                    conn.commit()
+                    bot.reply_to(message, f"✅ Парковка '{title}' успешно добавлена!")
+                except psycopg2.IntegrityError:
+                    bot.reply_to(message, "⚠️ Парковка с таким названием уже существует.")
+                conn.close()
+            else:
+                bot.reply_to(message, f"❌ Не удалось найти адрес: '{location_part}'")
+        else:
+            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - Ленина 14 - Парковка Центр")
+            
+    elif text.startswith('Удалить P -'):
+        parts = text.split(' - ', 1)
+        if len(parts) == 2:
+            title = parts[1].strip()
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("DELETE FROM parkings WHERE title = %s", (title,))
+            conn.commit()
+            if c.rowcount > 0:
+                bot.reply_to(message, f"🗑️ Парковка '{title}' удалена.")
+            else:
+                bot.reply_to(message, f"❌ Парковка '{title}' не найдена.")
+            conn.close()
+        else:
+            bot.reply_to(message, "⚠️ Формат: Удалить P - [Название]")
+
+    # --- ЛОГИКА САМОКАТОВ (без изменений) ---
+    elif '-' in text:
         parts = text.rsplit('-', 1) 
         location_part = parts[0].strip()
         title = parts[1].strip()
@@ -76,10 +117,8 @@ def handle_message(message):
             return
 
         coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', location_part)
-        
         if coord_match:
-            lat = float(coord_match.group(1))
-            lon = float(coord_match.group(2))
+            lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
             bot.reply_to(message, f"✅ Координаты приняты!\n📍 {title}")
         else:
             bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
@@ -88,16 +127,14 @@ def handle_message(message):
         if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
-            # В PostgreSQL используем %s вместо ?
-            c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (%s, %s, %s, %s, 'active')",
-                     (title, location_part, lat, lon))
+            c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (%s, %s, %s, %s, 'active')", (title, location_part, lat, lon))
             conn.commit()
             conn.close()
             bot.reply_to(message, f"✅ Точка '{title}' успешно добавлена на карту!")
         else:
             bot.reply_to(message, f"❌ Не удалось найти адрес: '{location_part}' в Смоленске.")
     else:
-        bot.reply_to(message, "⚠️ Формат: Адрес или Координаты - Название\nПримеры:\n• Ленина 14 - 666\n• ул. Гагарина 5 - Офис")
+        bot.reply_to(message, "⚠️ Формат самоката: Адрес - Название\n⚠️ Формат парковки: Создать P - Адрес - Название")
 
 @app.route('/')
 def serve_website():
@@ -141,18 +178,11 @@ def get_departures():
 @app.route('/add_departure', methods=['POST'])
 def add_departure():
     data = request.json
-    point_id = data.get('point_id')
-    point_title = data.get('point_title')
-    person_name = data.get('person_name')
-    
     conn = get_db_connection()
     c = conn.cursor()
-    # ON CONFLICT делает "upsert" (обновляет, если точка уже есть)
-    c.execute("""INSERT INTO departures (point_id, point_title, person_name) 
-                 VALUES (%s, %s, %s) 
-                 ON CONFLICT (point_id) 
-                 DO UPDATE SET point_title = EXCLUDED.point_title, person_name = EXCLUDED.person_name""",
-             (point_id, point_title, person_name))
+    c.execute("""INSERT INTO departures (point_id, point_title, person_name) VALUES (%s, %s, %s) 
+                 ON CONFLICT (point_id) DO UPDATE SET point_title = EXCLUDED.point_title, person_name = EXCLUDED.person_name""",
+             (data.get('point_id'), data.get('point_title'), data.get('person_name')))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -160,10 +190,9 @@ def add_departure():
 @app.route('/remove_departure', methods=['POST'])
 def remove_departure():
     data = request.json
-    point_id = data.get('point_id')
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("DELETE FROM departures WHERE point_id = %s", (point_id,))
+    c.execute("DELETE FROM departures WHERE point_id = %s", (data.get('point_id'),))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -173,6 +202,27 @@ def clear_all_departures():
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("DELETE FROM departures")
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+# --- НОВЫЕ API ДЛЯ ПАРКОВОК ---
+@app.route('/get_parkings')
+def get_parkings():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, title, address, lat, lon, available_count, dead_count FROM parkings")
+    parkings = [{"id": row[0], "title": row[1], "address": row[2], "lat": row[3], "lon": row[4], "available": row[5], "dead": row[6]} for row in c.fetchall()]
+    conn.close()
+    return jsonify(parkings)
+
+@app.route('/update_parking', methods=['POST'])
+def update_parking():
+    data = request.json
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE parkings SET available_count = %s, dead_count = %s WHERE id = %s", 
+              (data.get('available'), data.get('dead'), data.get('id')))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
