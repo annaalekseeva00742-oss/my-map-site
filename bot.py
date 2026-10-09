@@ -12,6 +12,8 @@ BOT_TOKEN = "8803648566:AAHmG4XTMTDqfIHlWjBeDsKCGmQ18pxKnGQ"
 ADMIN_CHAT_ID = 7929131842
 DATABASE_URL = os.environ.get("postgresql://mapbotuser:r47l5ou0pDueVnus4tiD3d2w7hYQJ1vy@dpg-db4fc5ks728c73ajgig0-a.frankfurt-postgres.render.com/mapbotdb")
 
+print(f"🚀 Бот запускается. DATABASE_URL получен: {bool(DATABASE_URL)}")
+
 app = Flask(__name__)
 CORS(app)
 
@@ -30,6 +32,7 @@ def init_db():
                   available_count TEXT DEFAULT '?', dead_count TEXT DEFAULT '?')''')
     conn.commit()
     conn.close()
+    print("✅ База данных инициализирована")
 
 init_db()
 
@@ -52,7 +55,6 @@ def get_coordinates(address):
     return None, None
 
 def parse_coordinates(text):
-    """Пытается распарсить координаты из строки. Возвращает (lat, lon) или (None, None)."""
     coord_match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$', text)
     if coord_match:
         return float(coord_match.group(1)), float(coord_match.group(2))
@@ -68,16 +70,24 @@ def handle_message(message):
     text = message.text.strip()
     text_lower = text.lower()
     
-    # === КОМАНДА: СОЗДАТЬ ПАРКОВКУ ===
+    print(f"📩 Получено сообщение: '{text}'")
+    
+    # === ПРОВЕРКА: СОЗДАТЬ ПАРКОВКУ ===
     if text_lower.startswith('создать p'):
-        remainder = text[len('создать p'):].strip()
+        print("🅿️ Распознана команда: СОЗДАТЬ ПАРКОВКУ")
         
+        # Убираем "создать p" из начала (любой регистр)
+        remainder = text_lower[len('создать p'):].strip()
+        
+        # Проверяем, что после "создать p" идёт дефис
         if not remainder.startswith('-'):
-            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес или Координаты] - [Название]\nПример: Создать P - Ленина 14 - Парковка Центр")
+            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - Ленина 14 - Парковка Центр")
             return
         
+        # Убираем первый дефис
         remainder = remainder[1:].strip()
         
+        # Теперь ищем второй дефис (разделитель между адресом и названием)
         if ' - ' not in remainder:
             bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - 54.777, 32.052 - Ермолино Центр")
             return
@@ -86,14 +96,19 @@ def handle_message(message):
         location_part = parts[0].strip()
         title = parts[1].strip()
         
+        print(f"📍 Адрес/координаты: '{location_part}', Название: '{title}'")
+        
         if not location_part or not title:
             bot.reply_to(message, "⚠️ Пустые поля. Формат: Создать P - [Адрес] - [Название]")
             return
         
+        # Проверяем, координаты это или адрес
         lat, lon = parse_coordinates(location_part)
         if lat is None:
             bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
             lat, lon = get_coordinates(location_part)
+        else:
+            print(f"✅ Распознаны координаты: {lat}, {lon}")
         
         if lat and lon:
             conn = get_db_connection()
@@ -103,6 +118,7 @@ def handle_message(message):
                          (title, location_part, lat, lon))
                 conn.commit()
                 bot.reply_to(message, f"✅ Парковка '{title}' успешно добавлена!")
+                print(f"✅ Парковка '{title}' добавлена в БД")
             except psycopg2.IntegrityError:
                 bot.reply_to(message, f"⚠️ Парковка с названием '{title}' уже существует.")
             conn.close()
@@ -110,9 +126,10 @@ def handle_message(message):
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
         return
 
-    # === КОМАНДА: УДАЛИТЬ ПАРКОВКУ ===
+    # === ПРОВЕРКА: УДАЛИТЬ ПАРКОВКУ ===
     if text_lower.startswith('удалить p'):
-        remainder = text[len('удалить p'):].strip()
+        print("🗑️ Распознана команда: УДАЛИТЬ ПАРКОВКУ")
+        remainder = text_lower[len('удалить p'):].strip()
         if not remainder.startswith('-'):
             bot.reply_to(message, "⚠️ Формат: Удалить P - [Название]")
             return
@@ -132,8 +149,9 @@ def handle_message(message):
         conn.close()
         return
 
-    # === САМОКАТЫ ===
+    # === САМОКАТЫ (обычная логика) ===
     if '-' in text:
+        print("🛴 Распознана команда: САМОКАТ")
         parts = text.rsplit('-', 1) 
         location_part = parts[0].strip()
         title = parts[1].strip()
@@ -252,6 +270,7 @@ def update_parking():
     return jsonify({"success": True})
 
 def run_bot():
+    print("🤖 Бот запущен и слушает сообщения...")
     bot.polling(none_stop=True)
 
 if __name__ == '__main__':
@@ -259,4 +278,5 @@ if __name__ == '__main__':
     bot_thread.daemon = True
     bot_thread.start()
     port = int(os.environ.get("PORT", 8080))
+    print(f"🌐 Веб-сервер запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)
