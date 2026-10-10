@@ -72,6 +72,7 @@
         var isDrawingZone = false, zonePoints = [], zoneLinePlacemark = null, zonePointMarkers = [];
         var tasksHeaderClickCount = 0, tasksHeaderClickTimer = null;
         var infoClickCount = 0, infoClickTimer = null, isHybridMode = false;
+        var BASE_URL = 'https://yandex67.github.io/my-map-site/';
 
         ymaps.ready(init);
 
@@ -84,25 +85,27 @@
             myMap.events.add('click', function(e) { if (!isDrawingZone) return; addZonePoint(e.get('coords')); });
         }
 
-        // === ИКОНКА САМОКАТА ===
-        function createScooterIcon(statusColor, taskNumber) {
-            var textColor = (statusColor === '#333333') ? 'white' : 'black';
-            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">' +
-                '<circle cx="18" cy="18" r="18" fill="' + statusColor + '"/>' +
-                '<image href="https://yandex67.github.io/my-map-site/sam.png" x="10" y="2" width="16" height="16" preserveAspectRatio="xMidYMid meet"/>' +
-                '<text x="18" y="30" font-family="YS Text, Arial, sans-serif" font-size="11" font-weight="bold" fill="' + textColor + '" text-anchor="middle">' + taskNumber + '</text>' +
-                '</svg>';
-            return {
-                iconLayout: ymaps.templateLayoutFactory.createClass('<div style="width:36px; height:36px;">' + svg + '</div>'),
-                iconShape: { type: 'Circle', coordinates: [18, 18], radius: 18 }
-            };
+        // === ИКОНКА САМОКАТА (без кружка, разные картинки) ===
+        function getScooterImage(status) {
+            if (status === 'red') return BASE_URL + 'red.png';
+            if (status === 'not_found') return BASE_URL + 'black.png';
+            if (status === 'rented') return BASE_URL + 'ser.png';
+            return BASE_URL + 'green.png';
         }
 
-        function getMarkerStyle(status) {
-            if (status === 'active') return '#c5c5c4';
-            if (status === 'not_found') return '#333333';
-            if (status === 'rented') return '#e5e4e2';
-            return '#c5c5c4';
+        function createScooterIcon(status, taskNumber) {
+            var imgUrl = getScooterImage(status);
+            // Картинка 36x36, цифра под ней с отступом 2px, высота цифры ~12px
+            // Итого высота: 36 + 2 + 12 = 50px
+            // Точка привязки: центр картинки (18, 18)
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="50" viewBox="0 0 36 50">' +
+                '<image href="' + imgUrl + '" x="0" y="0" width="36" height="36" preserveAspectRatio="xMidYMid meet"/>' +
+                '<text x="18" y="48" font-family="YS Text, Arial, sans-serif" font-size="11" font-weight="bold" fill="black" text-anchor="middle">' + taskNumber + '</text>' +
+                '</svg>';
+            return {
+                iconLayout: ymaps.templateLayoutFactory.createClass('<div style="width:36px; height:50px;">' + svg + '</div>'),
+                iconShape: { type: 'Circle', coordinates: [18, 18], radius: 18 }
+            };
         }
 
         // === САМОКАТЫ ===
@@ -114,8 +117,7 @@
                 markers = [];
                 document.getElementById('pointCount').textContent = data.length;
                 data.forEach(function(point) {
-                    var color = getMarkerStyle(point.status);
-                    var iconOptions = createScooterIcon(color, point.title.trim());
+                    var iconOptions = createScooterIcon(point.status, point.title.trim());
                     var isBooked = departures[point.id] !== undefined;
                     if (isBooked) {
                         var labelLayout = ymaps.templateLayoutFactory.createClass('<div style="background: black; color: white; font-size: 8px; font-weight: bold; padding: 3px 4px; border-radius: 3px; text-align: center; width: 44px; box-sizing: border-box; line-height: 1.2;">Выехали</div>');
@@ -189,16 +191,21 @@
         }
 
         function createParkingLabels(lat, lon, available, dead, pId) {
+            // Фиксированная ширина 100px для точного центрирования
             var layout = ymaps.templateLayoutFactory.createClass(
-                '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">' +
+                '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100px;">' +
                     '<div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ' + available + '</div>' +
                     '<div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ' + dead + '</div>' +
                 '</div>'
             );
             return new ymaps.Placemark([lat, lon], {}, {
                 iconLayout: layout,
-                iconOffset: [-45, -42], // Центрировано над 🅿️
-                iconShape: { type: 'Rectangle', coordinates: [[0, 0], [90, 30]] }
+                // Ширина layout 100px, центр = 50px. Точка привязки = центр эмодзи (18px от левого края эмодзи).
+                // Эмодзи центрирован по точке привязки, значит его левый край в -18px.
+                // Чтобы центр layout (50px) совпал с точкой привязки (0), левый край layout должен быть в -50px.
+                // По Y: эмодзи от -18 до +18. Плашки высотой ~30px + отступ 4px. Нижний край плашек в -22px, верхний в -52px.
+                iconOffset: [-50, -52],
+                iconShape: { type: 'Rectangle', coordinates: [[0, 0], [100, 32]] }
             });
         }
 
@@ -238,18 +245,19 @@
             var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
             if (!pm) return;
             var p = pm.properties.get('parkingData');
+            // gap: 10px везде, включая между "Севшие" и "ОК"
             var html = '<div style="min-width: 220px; padding: 15px; box-sizing: border-box; text-align: center;">' +
                 '<b style="font-size: 16px; display: block; margin-bottom: 15px;">' + p.title + '</b>' +
                 '<div style="display: flex; flex-direction: column; gap: 10px;">' +
                     '<div>' +
                         '<button id="btn_avail_' + id + '" onclick="activateInput(\'avail\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">В доступе</button>' +
-                        '<input id="inp_avail_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box; margin-top: 5px;">' +
+                        '<input id="inp_avail_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;">' +
                     '</div>' +
                     '<div>' +
                         '<button id="btn_dead_' + id + '" onclick="activateInput(\'dead\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">Севшие</button>' +
-                        '<input id="inp_dead_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box; margin-top: 5px;">' +
+                        '<input id="inp_dead_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;">' +
                     '</div>' +
-                    '<button onclick="saveParking(' + id + ')" style="background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px;">ОК</button>' +
+                    '<button onclick="saveParking(' + id + ')" style="background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">ОК</button>' +
                 '</div>' +
             '</div>';
             pm.properties.set('balloonContent', html);
