@@ -2,7 +2,7 @@ import telebot
 import requests
 import re
 import os
-import psycopg2
+import psycopg
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import threading
@@ -18,7 +18,7 @@ app = Flask(__name__)
 CORS(app)
 
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg.connect(DATABASE_URL)
 
 def init_db():
     conn = get_db_connection()
@@ -72,44 +72,29 @@ def handle_message(message):
     
     print(f"📩 Получено сообщение: '{text}'")
     
-    # === ПРОВЕРКА: СОЗДАТЬ ПАРКОВКУ ===
     if text_lower.startswith('создать p'):
         print("🅿️ Распознана команда: СОЗДАТЬ ПАРКОВКУ")
-        
-        # Убираем "создать p" из начала (любой регистр)
         remainder = text_lower[len('создать p'):].strip()
-        
-        # Проверяем, что после "создать p" идёт дефис
         if not remainder.startswith('-'):
             bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - Ленина 14 - Парковка Центр")
             return
-        
-        # Убираем первый дефис
         remainder = remainder[1:].strip()
-        
-        # Теперь ищем второй дефис (разделитель между адресом и названием)
         if ' - ' not in remainder:
             bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - 54.777, 32.052 - Ермолино Центр")
             return
-        
         parts = remainder.split(' - ', 1)
         location_part = parts[0].strip()
         title = parts[1].strip()
-        
-        print(f"📍 Адрес/координаты: '{location_part}', Название: '{title}'")
-        
+        print(f" Адрес/координаты: '{location_part}', Название: '{title}'")
         if not location_part or not title:
             bot.reply_to(message, "⚠️ Пустые поля. Формат: Создать P - [Адрес] - [Название]")
             return
-        
-        # Проверяем, координаты это или адрес
         lat, lon = parse_coordinates(location_part)
         if lat is None:
             bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
             lat, lon = get_coordinates(location_part)
         else:
             print(f"✅ Распознаны координаты: {lat}, {lon}")
-        
         if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
@@ -119,14 +104,13 @@ def handle_message(message):
                 conn.commit()
                 bot.reply_to(message, f"✅ Парковка '{title}' успешно добавлена!")
                 print(f"✅ Парковка '{title}' добавлена в БД")
-            except psycopg2.IntegrityError:
+            except psycopg.errors.UniqueViolation:
                 bot.reply_to(message, f"⚠️ Парковка с названием '{title}' уже существует.")
             conn.close()
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
         return
 
-    # === ПРОВЕРКА: УДАЛИТЬ ПАРКОВКУ ===
     if text_lower.startswith('удалить p'):
         print("🗑️ Распознана команда: УДАЛИТЬ ПАРКОВКУ")
         remainder = text_lower[len('удалить p'):].strip()
@@ -137,7 +121,6 @@ def handle_message(message):
         if not title:
             bot.reply_to(message, "⚠️ Пустое название. Формат: Удалить P - [Название]")
             return
-        
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("DELETE FROM parkings WHERE title = %s", (title,))
@@ -149,22 +132,18 @@ def handle_message(message):
         conn.close()
         return
 
-    # === САМОКАТЫ (обычная логика) ===
     if '-' in text:
-        print("🛴 Распознана команда: САМОКАТ")
+        print(" Распознана команда: САМОКАТ")
         parts = text.rsplit('-', 1) 
         location_part = parts[0].strip()
         title = parts[1].strip()
-        
         if not location_part or not title:
             bot.reply_to(message, "⚠️ Формат: Адрес - Название\nПример: Ленина 14 - 666")
             return
-
         lat, lon = parse_coordinates(location_part)
         if lat is None:
-            bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
+            bot.reply_to(message, f" Ищу: г. Смоленск, {location_part}...")
             lat, lon = get_coordinates(location_part)
-            
         if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
@@ -176,9 +155,8 @@ def handle_message(message):
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
     else:
-        bot.reply_to(message, "⚠️ Неизвестная команда.\n\nФорматы:\n• Самокат: Адрес - Название\n• Парковка: Создать P - Адрес - Название\n• Удалить: Удалить P - Название")
+        bot.reply_to(message, "️ Неизвестная команда.\n\nФорматы:\n• Самокат: Адрес - Название\n• Парковка: Создать P - Адрес - Название\n• Удалить: Удалить P - Название")
 
-# === API ЭНДПОИНТЫ ===
 @app.route('/')
 def serve_website():
     return "Бот работает! API доступно."
@@ -278,5 +256,5 @@ if __name__ == '__main__':
     bot_thread.daemon = True
     bot_thread.start()
     port = int(os.environ.get("PORT", 8080))
-    print(f"🌐 Веб-сервер запущен на порту {port}")
+    print(f" Веб-сервер запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)
