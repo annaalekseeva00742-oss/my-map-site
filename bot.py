@@ -12,15 +12,6 @@ BOT_TOKEN = "8803648566:AAHdzjrUA2lRpnrUt1AFfY8w-U3WJKFwb9Q"
 ADMIN_CHAT_ID = 7929131842
 DATABASE_URL = "postgresql://mapbotuser:r47l5ou0pDueVnus4tiD3d2w7hYQJ1vy@dpg-db4fc5ks728c73ajgig0-a.frankfurt-postgres.render.com/mapbotdb"
 
-print("=" * 50)
-print("🔍 ДИАГНОСТИКА:")
-print(f"  BOT_TOKEN задан: {bool(BOT_TOKEN)}")
-print(f"  DATABASE_URL задан: {bool(DATABASE_URL)}")
-print("=" * 50)
-
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL не задан! Проверьте Environment в Render или захардкодьте его в коде.")
-
 app = Flask(__name__)
 CORS(app)
 
@@ -39,22 +30,14 @@ def init_db():
                   available_count TEXT DEFAULT '?', dead_count TEXT DEFAULT '?')''')
     conn.commit()
     conn.close()
-    print("✅ База данных инициализирована")
 
 init_db()
 
+# УПРОЩЕННЫЙ ПОИСК (КАК У САМОКАТОВ)
 def get_coordinates(address):
-    address_clean = address.strip()
-    # ЖЁСТКАЯ ПРИВЯЗКА К СМОЛЕНСКУ
-    if not address_clean.lower().startswith('смоленск'):
-        if not address_clean.lower().startswith(('ул.', 'улица', 'пр.', 'проспект', 'пл.', 'площадь', 'пер.', 'переулок', 'ш.', 'шоссе', 'б-р', 'бульвар', 'наб.', 'набережная')):
-            address_clean = "улица " + address_clean
-        address_clean = "Смоленск, " + address_clean
-    else:
-        address_clean = "Смоленск, " + address_clean.replace('смоленск', '', 1).strip()
-        
+    query = f"Смоленск, {address}"
     url = "https://nominatim.openstreetmap.org/search"
-    params = {"q": address_clean, "format": "json", "limit": 1}
+    params = {"q": query, "format": "json", "limit": 1}
     headers = {"User-Agent": "SmolenskMapBot/1.0"}
     try:
         response = requests.get(url, params=params, headers=headers, timeout=5)
@@ -81,58 +64,60 @@ def handle_message(message):
     text = message.text.strip()
     text_lower = text.lower()
     
-    print(f"📩 Получено: '{text}'")
-    
     # === СОЗДАТЬ ПАРКОВКУ ===
     if text_lower.startswith('создать p'):
-        remainder = text_lower[len('создать p'):].strip()
-        if not remainder.startswith('-'):
-            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - Гагарина 1 - Ермолино Центр")
-            return
-        remainder = remainder[1:].strip()
-        if ' - ' not in remainder:
-            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]")
-            return
-        parts = remainder.split(' - ', 1)
-        location_part = parts[0].strip()
-        title = parts[1].strip() # Сохраняем исходный регистр названия
-        
-        lat, lon = parse_coordinates(location_part)
-        if lat is None:
-            bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
-            lat, lon = get_coordinates(location_part)
-            
-        if lat and lon:
-            conn = get_db_connection()
-            c = conn.cursor()
-            try:
-                c.execute("INSERT INTO parkings (title, address, lat, lon) VALUES (%s, %s, %s, %s)", 
-                         (title, location_part, lat, lon))
-                conn.commit()
-                bot.reply_to(message, f"✅ Парковка '{title}' успешно добавлена!")
-            except psycopg.errors.UniqueViolation:
-                bot.reply_to(message, f"⚠️ Парковка '{title}' уже существует.")
-            conn.close()
-        else:
-            bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
+        # Берем остаток из ОРИГИНАЛЬНОГО текста, чтобы сохранить регистр (Ермолино Центр)
+        first_dash = text.find('-')
+        if first_dash != -1:
+            remainder = text[first_dash+1:].strip()
+            if ' - ' in remainder:
+                parts = remainder.split(' - ', 1)
+                location_part = parts[0].strip()
+                title = parts[1].strip() # Регистр сохранен!
+                
+                lat, lon = parse_coordinates(location_part)
+                if lat is None:
+                    bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
+                    lat, lon = get_coordinates(location_part)
+                    
+                if lat and lon:
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    try:
+                        c.execute("INSERT INTO parkings (title, address, lat, lon) VALUES (%s, %s, %s, %s)", 
+                                 (title, location_part, lat, lon))
+                        conn.commit()
+                        bot.reply_to(message, f"✅ Парковка \"{title}\" успешно добавлена!")
+                    except psycopg.errors.UniqueViolation:
+                        bot.reply_to(message, f"⚠️ Парковка \"{title}\" уже существует.")
+                    conn.close()
+                else:
+                    bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
+            else:
+                bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]")
         return
 
     # === УДАЛИТЬ ПАРКОВКУ ===
-    if text_lower.startswith('удалить p'):
-        remainder = text_lower[len('удалить p'):].strip()
-        if not remainder.startswith('-'):
-            bot.reply_to(message, "⚠️ Формат: Удалить P - [Название]")
-            return
-        title = remainder[1:].strip()
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("DELETE FROM parkings WHERE title = %s", (title,))
-        conn.commit()
-        if c.rowcount > 0:
-            bot.reply_to(message, f"🗑️ Парковка '{title}' удалена.")
-        else:
-            bot.reply_to(message, f"❌ Парковка '{title}' не найдена.")
-        conn.close()
+    if text_lower.startswith('удалить'):
+        first_dash = text.find('-')
+        if first_dash != -1:
+            remainder = text[first_dash+1:].strip()
+            # Пытаемся взять название (все, что после второго дефиса, или весь остаток)
+            if ' - ' in remainder:
+                parts = remainder.split(' - ', 1)
+                title_to_delete = parts[1].strip()
+            else:
+                title_to_delete = remainder.strip()
+                
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("DELETE FROM parkings WHERE title = %s", (title_to_delete,))
+            conn.commit()
+            if c.rowcount > 0:
+                bot.reply_to(message, f"🗑️ Парковка \"{title_to_delete}\" удалена.")
+            else:
+                bot.reply_to(message, f"❌ Парковка \"{title_to_delete}\" не найдена.")
+            conn.close()
         return
 
     # === САМОКАТЫ ===
@@ -156,8 +141,6 @@ def handle_message(message):
             bot.reply_to(message, f"✅ Самокат '{title}' добавлен!")
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
-    else:
-        bot.reply_to(message, "⚠️ Форматы:\n• Самокат: Адрес - Название\n• Парковка: Создать P - Адрес - Название\n• Удалить: Удалить P - Название")
 
 # === API ЭНДПОИНТЫ ===
 @app.route('/')
@@ -249,7 +232,6 @@ def update_parking():
     return jsonify({"success": True})
 
 def run_bot():
-    print("🤖 Бот запущен...")
     bot.polling(none_stop=True)
 
 if __name__ == '__main__':
