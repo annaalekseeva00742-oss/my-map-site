@@ -33,7 +33,6 @@ def init_db():
 
 init_db()
 
-# УПРОЩЕННЫЙ ПОИСК (КАК У САМОКАТОВ)
 def get_coordinates(address):
     query = f"Смоленск, {address}"
     url = "https://nominatim.openstreetmap.org/search"
@@ -66,18 +65,18 @@ def handle_message(message):
     
     # === СОЗДАТЬ ПАРКОВКУ ===
     if text_lower.startswith('создать p'):
-        # Берем остаток из ОРИГИНАЛЬНОГО текста, чтобы сохранить регистр (Ермолино Центр)
+        # ВАЖНО: берем остаток из ОРИГИНАЛЬНОГО text, чтобы сохранить регистр
         first_dash = text.find('-')
         if first_dash != -1:
-            remainder = text[first_dash+1:].strip()
+            remainder = text[first_dash+1:].strip()  # Из оригинального text!
             if ' - ' in remainder:
                 parts = remainder.split(' - ', 1)
                 location_part = parts[0].strip()
-                title = parts[1].strip() # Регистр сохранен!
+                title = parts[1].strip()  # Регистр сохранен: "Ермолино Центр"
                 
                 lat, lon = parse_coordinates(location_part)
                 if lat is None:
-                    bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
+                    bot.reply_to(message, f" Ищу в Смоленске: {location_part}...")
                     lat, lon = get_coordinates(location_part)
                     
                 if lat and lon:
@@ -102,7 +101,6 @@ def handle_message(message):
         first_dash = text.find('-')
         if first_dash != -1:
             remainder = text[first_dash+1:].strip()
-            # Пытаемся взять название (все, что после второго дефиса, или весь остаток)
             if ' - ' in remainder:
                 parts = remainder.split(' - ', 1)
                 title_to_delete = parts[1].strip()
@@ -128,7 +126,7 @@ def handle_message(message):
         
         lat, lon = parse_coordinates(location_part)
         if lat is None:
-            bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
+            bot.reply_to(message, f" Ищу в Смоленске: {location_part}...")
             lat, lon = get_coordinates(location_part)
             
         if lat and lon:
@@ -142,7 +140,6 @@ def handle_message(message):
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
 
-# === API ЭНДПОИНТЫ ===
 @app.route('/')
 def serve_website():
     return "Бот работает!"
