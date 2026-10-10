@@ -13,16 +13,13 @@ ADMIN_CHAT_ID = 7929131842
 DATABASE_URL = "postgresql://mapbotuser:r47l5ou0pDueVnus4tiD3d2w7hYQJ1vy@dpg-db4fc5ks728c73ajgig0-a.frankfurt-postgres.render.com/mapbotdb"
 
 print("=" * 50)
-print("🔍 ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ:")
+print("🔍 ДИАГНОСТИКА:")
 print(f"  BOT_TOKEN задан: {bool(BOT_TOKEN)}")
-print(f"  BOT_TOKEN длина: {len(BOT_TOKEN) if BOT_TOKEN else 0}")
 print(f"  DATABASE_URL задан: {bool(DATABASE_URL)}")
-print(f"  DATABASE_URL длина: {len(DATABASE_URL) if DATABASE_URL else 0}")
-if DATABASE_URL:
-    print(f"  DATABASE_URL начало: {DATABASE_URL[:30]}...")
-else:
-    print("  ⚠️ DATABASE_URL НЕ ЗАДАН! Проверьте Environment в Render.")
 print("=" * 50)
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL не задан! Проверьте Environment в Render или захардкодьте его в коде.")
 
 app = Flask(__name__)
 CORS(app)
@@ -48,12 +45,16 @@ init_db()
 
 def get_coordinates(address):
     address_clean = address.strip()
-    street_prefixes = ('ул.', 'улица', 'пр.', 'проспект', 'пл.', 'площадь', 'пер.', 'переулок', 'ш.', 'шоссе', 'б-р', 'бульвар', 'наб.', 'набережная')
-    if not address_clean.lower().startswith(street_prefixes):
-        address_clean = "улица " + address_clean
-    query = f"г. Смоленск, {address_clean}"
+    # ЖЁСТКАЯ ПРИВЯЗКА К СМОЛЕНСКУ
+    if not address_clean.lower().startswith('смоленск'):
+        if not address_clean.lower().startswith(('ул.', 'улица', 'пр.', 'проспект', 'пл.', 'площадь', 'пер.', 'переулок', 'ш.', 'шоссе', 'б-р', 'бульвар', 'наб.', 'набережная')):
+            address_clean = "улица " + address_clean
+        address_clean = "Смоленск, " + address_clean
+    else:
+        address_clean = "Смоленск, " + address_clean.replace('смоленск', '', 1).strip()
+        
     url = "https://nominatim.openstreetmap.org/search"
-    params = {"q": query, "format": "json", "limit": 1}
+    params = {"q": address_clean, "format": "json", "limit": 1}
     headers = {"User-Agent": "SmolenskMapBot/1.0"}
     try:
         response = requests.get(url, params=params, headers=headers, timeout=5)
@@ -80,31 +81,27 @@ def handle_message(message):
     text = message.text.strip()
     text_lower = text.lower()
     
-    print(f"📩 Получено сообщение: '{text}'")
+    print(f"📩 Получено: '{text}'")
     
+    # === СОЗДАТЬ ПАРКОВКУ ===
     if text_lower.startswith('создать p'):
-        print("🅿️ Распознана команда: СОЗДАТЬ ПАРКОВКУ")
         remainder = text_lower[len('создать p'):].strip()
         if not remainder.startswith('-'):
-            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - Ленина 14 - Парковка Центр")
+            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - Гагарина 1 - Ермолино Центр")
             return
         remainder = remainder[1:].strip()
         if ' - ' not in remainder:
-            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]\nПример: Создать P - 54.777, 32.052 - Ермолино Центр")
+            bot.reply_to(message, "⚠️ Формат: Создать P - [Адрес] - [Название]")
             return
         parts = remainder.split(' - ', 1)
         location_part = parts[0].strip()
-        title = parts[1].strip()
-        print(f" Адрес/координаты: '{location_part}', Название: '{title}'")
-        if not location_part or not title:
-            bot.reply_to(message, "⚠️ Пустые поля. Формат: Создать P - [Адрес] - [Название]")
-            return
+        title = parts[1].strip() # Сохраняем исходный регистр названия
+        
         lat, lon = parse_coordinates(location_part)
         if lat is None:
-            bot.reply_to(message, f"⏳ Ищу: г. Смоленск, {location_part}...")
+            bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
             lat, lon = get_coordinates(location_part)
-        else:
-            print(f"✅ Распознаны координаты: {lat}, {lon}")
+            
         if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
@@ -113,24 +110,20 @@ def handle_message(message):
                          (title, location_part, lat, lon))
                 conn.commit()
                 bot.reply_to(message, f"✅ Парковка '{title}' успешно добавлена!")
-                print(f"✅ Парковка '{title}' добавлена в БД")
             except psycopg.errors.UniqueViolation:
-                bot.reply_to(message, f"⚠️ Парковка с названием '{title}' уже существует.")
+                bot.reply_to(message, f"⚠️ Парковка '{title}' уже существует.")
             conn.close()
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
         return
 
+    # === УДАЛИТЬ ПАРКОВКУ ===
     if text_lower.startswith('удалить p'):
-        print("🗑️ Распознана команда: УДАЛИТЬ ПАРКОВКУ")
         remainder = text_lower[len('удалить p'):].strip()
         if not remainder.startswith('-'):
             bot.reply_to(message, "⚠️ Формат: Удалить P - [Название]")
             return
         title = remainder[1:].strip()
-        if not title:
-            bot.reply_to(message, "⚠️ Пустое название. Формат: Удалить P - [Название]")
-            return
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("DELETE FROM parkings WHERE title = %s", (title,))
@@ -142,18 +135,17 @@ def handle_message(message):
         conn.close()
         return
 
+    # === САМОКАТЫ ===
     if '-' in text:
-        print(" Распознана команда: САМОКАТ")
         parts = text.rsplit('-', 1) 
         location_part = parts[0].strip()
         title = parts[1].strip()
-        if not location_part or not title:
-            bot.reply_to(message, "⚠️ Формат: Адрес - Название\nПример: Ленина 14 - 666")
-            return
+        
         lat, lon = parse_coordinates(location_part)
         if lat is None:
-            bot.reply_to(message, f" Ищу: г. Смоленск, {location_part}...")
+            bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
             lat, lon = get_coordinates(location_part)
+            
         if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
@@ -161,15 +153,16 @@ def handle_message(message):
                      (title, location_part, lat, lon))
             conn.commit()
             conn.close()
-            bot.reply_to(message, f"✅ Точка '{title}' успешно добавлена на карту!")
+            bot.reply_to(message, f"✅ Самокат '{title}' добавлен!")
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
     else:
-        bot.reply_to(message, "️ Неизвестная команда.\n\nФорматы:\n• Самокат: Адрес - Название\n• Парковка: Создать P - Адрес - Название\n• Удалить: Удалить P - Название")
+        bot.reply_to(message, "⚠️ Форматы:\n• Самокат: Адрес - Название\n• Парковка: Создать P - Адрес - Название\n• Удалить: Удалить P - Название")
 
+# === API ЭНДПОИНТЫ ===
 @app.route('/')
 def serve_website():
-    return "Бот работает! API доступно."
+    return "Бот работает!"
 
 @app.route('/get_points')
 def get_points():
@@ -183,16 +176,14 @@ def get_points():
 @app.route('/update_status', methods=['POST'])
 def update_status():
     data = request.json
-    point_id = data.get('id')
-    status = data.get('status')
     conn = get_db_connection()
     c = conn.cursor()
-    if status == 'found':
-        c.execute("DELETE FROM points WHERE id = %s", (point_id,))
-        c.execute("DELETE FROM departures WHERE point_id = %s", (point_id,))
+    if data.get('status') == 'found':
+        c.execute("DELETE FROM points WHERE id = %s", (data.get('id'),))
+        c.execute("DELETE FROM departures WHERE point_id = %s", (data.get('id'),))
     else:
-        c.execute("UPDATE points SET status = %s WHERE id = %s", (status, point_id))
-        c.execute("DELETE FROM departures WHERE point_id = %s", (point_id,))
+        c.execute("UPDATE points SET status = %s WHERE id = %s", (data.get('status'), data.get('id')))
+        c.execute("DELETE FROM departures WHERE point_id = %s", (data.get('id'),))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -258,7 +249,7 @@ def update_parking():
     return jsonify({"success": True})
 
 def run_bot():
-    print("🤖 Бот запущен и слушает сообщения...")
+    print("🤖 Бот запущен...")
     bot.polling(none_stop=True)
 
 if __name__ == '__main__':
@@ -266,5 +257,4 @@ if __name__ == '__main__':
     bot_thread.daemon = True
     bot_thread.start()
     port = int(os.environ.get("PORT", 8080))
-    print(f" Веб-сервер запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)
