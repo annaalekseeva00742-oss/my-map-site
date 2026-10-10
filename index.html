@@ -186,19 +186,27 @@
             };
         }
 
-        function createParkingLabels(lat, lon, available, dead, pId) {
-            var layout = ymaps.templateLayoutFactory.createClass(
-                '<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-right: 4px;">' +
-                    '<div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ' + available + '</div>' +
-                    '<div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ' + dead + '</div>' +
-                '</div>'
-            );
-            return new ymaps.Placemark([lat, lon], {}, {
-                iconLayout: layout,
-                iconOffset: [-90, -20], // Идеальный центр по Y относительно иконки 36px, прижато влево
-                iconShape: { type: 'Rectangle', coordinates: [[0, 0], [90, 40]] }
-            });
-        }
+        function startEditParking(id) {
+    var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
+    if (!pm) return;
+    var p = pm.properties.get('parkingData');
+    var html = '<div style="min-width: 200px; padding: 12px; box-sizing: border-box; text-align: center;">' +
+        '<b style="font-size: 16px; display: block;">' + p.title + '</b>' +
+        '<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">' +
+            '<div style="position: relative;">' +
+                '<button id="btn_avail_' + id + '" onclick="activateInput(\'avail\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">В доступе</button>' +
+                '<input id="inp_avail_' + id + '" type="number" style="display: none; width: 100%; padding: 8px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;">' +
+            '</div>' +
+            '<div style="position: relative;">' +
+                '<button id="btn_dead_' + id + '" onclick="activateInput(\'dead\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">Севшие</button>' +
+                '<input id="inp_dead_' + id + '" type="number" style="display: none; width: 100%; padding: 8px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;">' +
+            '</div>' +
+            '<button onclick="saveParking(' + id + ')" style="background: #4CAF50; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 5px;">ОК</button>' +
+        '</div>' +
+    '</div>';
+    pm.properties.set('balloonContent', html);
+    pm.balloon.open();
+}
 
         function loadParkings() {
             parkingMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
