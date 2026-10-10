@@ -12,7 +12,17 @@ BOT_TOKEN = "8803648566:AAHdzjrUA2lRpnrUt1AFfY8w-U3WJKFwb9Q"
 ADMIN_CHAT_ID = 7929131842
 DATABASE_URL = os.environ.get("postgresql://mapbotuser:r47l5ou0pDueVnus4tiD3d2w7hYQJ1vy@dpg-db4fc5ks728c73ajgig0-a.frankfurt-postgres.render.com/mapbotdb")
 
-print(f"🚀 Бот запускается. DATABASE_URL получен: {bool(DATABASE_URL)}")
+print("=" * 50)
+print("🔍 ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ:")
+print(f"  BOT_TOKEN задан: {bool(BOT_TOKEN)}")
+print(f"  BOT_TOKEN длина: {len(BOT_TOKEN) if BOT_TOKEN else 0}")
+print(f"  DATABASE_URL задан: {bool(DATABASE_URL)}")
+print(f"  DATABASE_URL длина: {len(DATABASE_URL) if DATABASE_URL else 0}")
+if DATABASE_URL:
+    print(f"  DATABASE_URL начало: {DATABASE_URL[:30]}...")
+else:
+    print("  ⚠️ DATABASE_URL НЕ ЗАДАН! Проверьте Environment в Render.")
+print("=" * 50)
 
 app = Flask(__name__)
 CORS(app)
