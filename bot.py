@@ -63,20 +63,43 @@ def handle_message(message):
     text = message.text.strip()
     text_lower = text.lower()
     
+    # === ВСЕ P OFF — удалить все парковки ===
+    if text_lower == 'все p off':
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM parkings")
+        conn.commit()
+        count = c.rowcount
+        conn.close()
+        bot.reply_to(message, f"🗑️ Удалено парковок: {count}")
+        return
+    
+    # === LAST P OFF — удалить последнюю парковку ===
+    if text_lower == 'last p off':
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM parkings WHERE id = (SELECT MAX(id) FROM parkings)")
+        conn.commit()
+        if c.rowcount > 0:
+            bot.reply_to(message, "🗑️ Последняя парковка удалена.")
+        else:
+            bot.reply_to(message, "❌ Парковок не найдено.")
+        conn.close()
+        return
+
     # === СОЗДАТЬ ПАРКОВКУ ===
     if text_lower.startswith('создать p'):
-        # ВАЖНО: берем остаток из ОРИГИНАЛЬНОГО text, чтобы сохранить регистр
         first_dash = text.find('-')
         if first_dash != -1:
-            remainder = text[first_dash+1:].strip()  # Из оригинального text!
+            remainder = text[first_dash+1:].strip()
             if ' - ' in remainder:
                 parts = remainder.split(' - ', 1)
                 location_part = parts[0].strip()
-                title = parts[1].strip()  # Регистр сохранен: "Ермолино Центр"
+                title = parts[1].strip()
                 
                 lat, lon = parse_coordinates(location_part)
                 if lat is None:
-                    bot.reply_to(message, f" Ищу в Смоленске: {location_part}...")
+                    bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
                     lat, lon = get_coordinates(location_part)
                     
                 if lat and lon:
@@ -88,7 +111,7 @@ def handle_message(message):
                         conn.commit()
                         bot.reply_to(message, f"✅ Парковка \"{title}\" успешно добавлена!")
                     except psycopg.errors.UniqueViolation:
-                        bot.reply_to(message, f"⚠️ Парковка \"{title}\" уже существует.")
+                        bot.reply_to(message, f"️ Парковка \"{title}\" уже существует.")
                     conn.close()
                 else:
                     bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
@@ -124,19 +147,28 @@ def handle_message(message):
         location_part = parts[0].strip()
         title = parts[1].strip()
         
+        # Проверяем, есть ли "red" в конце названия
+        status = 'active'
+        if title.lower().endswith(' red'):
+            title = title[:-4].strip()  # Убираем " red"
+            status = 'red'
+        
         lat, lon = parse_coordinates(location_part)
         if lat is None:
-            bot.reply_to(message, f" Ищу в Смоленске: {location_part}...")
+            bot.reply_to(message, f"⏳ Ищу в Смоленске: {location_part}...")
             lat, lon = get_coordinates(location_part)
             
         if lat and lon:
             conn = get_db_connection()
             c = conn.cursor()
-            c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (%s, %s, %s, %s, 'active')",
-                     (title, location_part, lat, lon))
+            c.execute("INSERT INTO points (title, address, lat, lon, status) VALUES (%s, %s, %s, %s, %s)",
+                     (title, location_part, lat, lon, status))
             conn.commit()
             conn.close()
-            bot.reply_to(message, f"✅ Самокат '{title}' добавлен!")
+            if status == 'red':
+                bot.reply_to(message, f"🔴 Самокат '{title}' добавлен (красный)!")
+            else:
+                bot.reply_to(message, f"✅ Самокат '{title}' добавлен!")
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
 
