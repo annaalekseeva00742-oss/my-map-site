@@ -191,23 +191,19 @@
         }
 
         function createParkingLabels(lat, lon, available, dead, pId) {
-            // Фиксированная ширина 100px для точного центрирования
-            var layout = ymaps.templateLayoutFactory.createClass(
-                '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100px;">' +
-                    '<div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ' + available + '</div>' +
-                    '<div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ' + dead + '</div>' +
-                '</div>'
-            );
-            return new ymaps.Placemark([lat, lon], {}, {
-                iconLayout: layout,
-                // Ширина layout 100px, центр = 50px. Точка привязки = центр эмодзи (18px от левого края эмодзи).
-                // Эмодзи центрирован по точке привязки, значит его левый край в -18px.
-                // Чтобы центр layout (50px) совпал с точкой привязки (0), левый край layout должен быть в -50px.
-                // По Y: эмодзи от -18 до +18. Плашки высотой ~30px + отступ 4px. Нижний край плашек в -22px, верхний в -52px.
-                iconOffset: [-50, -52],
-                iconShape: { type: 'Rectangle', coordinates: [[0, 0], [100, 32]] }
-            });
-        }
+    var layout = ymaps.templateLayoutFactory.createClass(
+        '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100px;">' +
+            '<div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ' + available + '</div>' +
+            '<div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ' + dead + '</div>' +
+        '</div>'
+    );
+    return new ymaps.Placemark([lat, lon], {}, {
+        iconLayout: layout,
+        // [0, -22]: центр плашек по X совпадает с центром эмодзи, по Y подняты на 22px (чуть выше эмодзи)
+        iconOffset: [0, -22],
+        iconShape: { type: 'Rectangle', coordinates: [[0, 0], [100, 32]] }
+    });
+}
 
         function loadParkings() {
             parkingMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
