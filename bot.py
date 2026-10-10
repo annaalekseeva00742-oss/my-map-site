@@ -8,7 +8,7 @@ from flask_cors import CORS
 import threading
 
 # BOT_TOKEN = os.environ.get("BOT_TOKEN")  <-- Эта строка теперь отключена
-BOT_TOKEN = "8803648566:AAHmG4XTMTDqfIHlWjBeDsKCGmQ18pxKnGQ"
+BOT_TOKEN = "8803648566:AAHdzjrUA2lRpnrUt1AFfY8w-U3WJKFwb9Q"
 ADMIN_CHAT_ID = 7929131842
 DATABASE_URL = os.environ.get("postgresql://mapbotuser:r47l5ou0pDueVnus4tiD3d2w7hYQJ1vy@dpg-db4fc5ks728c73ajgig0-a.frankfurt-postgres.render.com/mapbotdb")
 
