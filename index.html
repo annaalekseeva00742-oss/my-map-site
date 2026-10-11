@@ -32,7 +32,7 @@
         .drawing-indicator .comment-input { display: none; width: 100%; padding: 8px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 14px; box-sizing: border-box; margin-top: 5px; }
         .drawing-indicator .action-buttons { display: flex; gap: 10px; width: 100%; margin-top: 5px; }
         .drawing-indicator .action-buttons button { background: white; color: #f44336; }
-        .drawing-indicator .btn-ok { background: #4CAF50 !important; color: white !important; display: none; }
+        .drawing-indicator .btn-ok-gray { background: #9E9E9E !important; color: white !important; display: none; }
 
         .delete-zone-modal { top: 80px; align-items: flex-start; }
         .delete-zone-modal .modal-box { margin-top: 10px; }
@@ -80,7 +80,7 @@
         </div>
         <div class="action-buttons">
             <button onclick="cancelZoneDrawing()">Отмена</button>
-            <button class="btn-ok" id="commentOkBtn" onclick="finishComment()">Ок</button>
+            <button class="btn-ok-gray" id="commentOkBtn" onclick="finishComment()">Ок</button>
             <button id="finishZoneBtn" onclick="finishZone()">Ок</button>
         </div>
     </div>
@@ -103,7 +103,7 @@
         var departures = {};
         var currentModalPointId = null, currentModalPointTitle = null;
         
-        var isDrawingZone = false, drawMode = 1, zonePoints = [], zonePolygon = null, zonePointMarkers = [];
+        var isDrawingZone = false, drawMode = 1, zonePoints = [], zonePolygon = null, zonePolyline = null, zonePointMarkers = [];
         var isDrawingFreehand = false, freehandStartPoint = null;
         var zoneComment = "", willSaveZone = false;
         var zoneToDeleteId = null;
@@ -139,7 +139,7 @@
             myMap.events.add('mouseup', function(e) {
                 if (isDrawingFreehand) { 
                     isDrawingFreehand = false; 
-                    if (zonePoints.length >= 3) finishZone(); 
+                    closeFreehandZone();
                 }
             });
             myMap.events.add('touchstart', function(e) {
@@ -157,7 +157,7 @@
             myMap.events.add('touchend', function(e) {
                 if (isDrawingFreehand) { 
                     isDrawingFreehand = false; 
-                    if (zonePoints.length >= 3) finishZone(); 
+                    closeFreehandZone();
                 }
             });
 
@@ -175,13 +175,10 @@
                     var polygon = new ymaps.Polygon([z.coords], {}, {
                         fillColor: '#FFB6C1', fillOpacity: 0.5,
                         strokeColor: '#ff3b30', strokeWidth: 3, strokeStyle: 'solid',
-                        editable: true, draggable: false
+                        editorDrawingCursor: "crosshair",
+                        draggable: false
                     });
-                    
-                    // Добавляем возможность редактировать точки
-                    polygon.events.add('vertexclick', function(e) {
-                        // Точка уже редактируется по умолчанию в Яндекс.Картах
-                    });
+                    polygon.editor.startEditing();
                     
                     var zoneObj = { id: z.id, polygon: polygon, text: null };
                     
@@ -207,10 +204,10 @@
                         ];
                         var textPlacemark = new ymaps.Placemark(center, {}, {
                             iconLayout: ymaps.templateLayoutFactory.createClass(
-                                '<div style="color: #640000; font-weight: bold; font-size: 16px; text-align: center; white-space: nowrap;">' + z.comment + '</div>'
+                                '<div style="color: #640000; font-weight: bold; font-size: 16px; text-align: center; white-space: nowrap; pointer-events: none;">' + z.comment + '</div>'
                             ),
-                            iconOffset: [-50, -10],
-                            iconShape: { type: 'Rectangle', coordinates: [[0, 0], [100, 20]] }
+                            iconOffset: [-100, -10],
+                            iconShape: { type: 'Rectangle', coordinates: [[0, 0], [200, 20]] }
                         });
                         myMap.geoObjects.add(textPlacemark);
                         zoneObj.text = textPlacemark;
@@ -224,13 +221,15 @@
             closeZoneModal();
             isDrawingZone = true;
             drawMode = mode;
-            willSaveZone = (mode === 3); // Сохраняем только если Режим 3
+            willSaveZone = (mode === 3);
             zonePoints = [];
             zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); });
             zonePointMarkers = [];
             if (zonePolygon) { myMap.geoObjects.remove(zonePolygon); zonePolygon = null; }
+            if (zonePolyline) { myMap.geoObjects.remove(zonePolyline); zonePolyline = null; }
             zoneComment = "";
             freehandStartPoint = null;
+            isDrawingFreehand = false;
 
             myMap.behaviors.disable('drag'); myMap.behaviors.disable('multiTouch'); myMap.behaviors.disable('scrollZoom'); myMap.behaviors.disable('dblClickZoom');
             
@@ -272,7 +271,6 @@
 
         function finishComment() {
             zoneComment = document.getElementById('commentInput').value.trim();
-            // После ввода коммента продолжаем рисование
             document.getElementById('mode3Buttons').style.display = 'none';
             document.getElementById('commentOkBtn').style.display = 'none';
             document.getElementById('finishZoneBtn').style.display = 'block';
@@ -280,7 +278,6 @@
         }
 
         function addZonePoint(coords) {
-            // Для режима 2 пропускаем точки слишком близко друг к другу
             if (drawMode === 2 && zonePoints.length > 0) {
                 var last = zonePoints[zonePoints.length - 1];
                 var dist = ymaps.coordSystem.geo.getDistance(last, coords);
@@ -297,7 +294,6 @@
                 myMap.geoObjects.add(pointMarker);
                 zonePointMarkers.push(pointMarker);
             } else if (drawMode === 2 && zonePoints.length === 1) {
-                // Показываем стартовую точку для режима 2
                 var startMarker = new ymaps.Placemark(coords, {}, {
                     iconLayout: ymaps.templateLayoutFactory.createClass('<div style="width: 12px; height: 12px; background: #ff3b30; border: 3px solid white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></div>'),
                     iconShape: { type: 'Circle', coordinates: [6, 6], radius: 6 }
@@ -306,37 +302,90 @@
                 zonePointMarkers.push(startMarker);
             }
             
-            updateZoneLine();
+            updateZonePreview();
         }
 
-        function updateZoneLine() {
-            if (zonePolygon) myMap.geoObjects.remove(zonePolygon);
-            if (zonePoints.length >= 2) {
-                zonePolygon = new ymaps.Polygon([zonePoints], {}, {
-                    fillColor: '#FFB6C1', fillOpacity: 0.3,
+        function updateZonePreview() {
+            if (zonePolygon) { myMap.geoObjects.remove(zonePolygon); zonePolygon = null; }
+            if (zonePolyline) { myMap.geoObjects.remove(zonePolyline); zonePolyline = null; }
+            
+            if (zonePoints.length < 2) return;
+            
+            if (drawMode === 1) {
+                // Режим 1: показываем разомкнутую линию до нажатия ОК
+                zonePolyline = new ymaps.Polyline(zonePoints, {}, {
                     strokeColor: '#ff3b30', strokeWidth: 3, strokeStyle: 'solid'
                 });
-                myMap.geoObjects.add(zonePolygon);
+                myMap.geoObjects.add(zonePolyline);
+            } else if (drawMode === 2) {
+                // Режим 2: тоже разомкнутая линия во время рисования
+                zonePolyline = new ymaps.Polyline(zonePoints, {}, {
+                    strokeColor: '#ff3b30', strokeWidth: 3, strokeStyle: 'solid'
+                });
+                myMap.geoObjects.add(zonePolyline);
+            }
+        }
+
+        function closeFreehandZone() {
+            if (zonePoints.length < 3) {
+                cancelZoneDrawing();
+                return;
+            }
+            // Замыкаем линию в полигон
+            if (zonePolyline) { myMap.geoObjects.remove(zonePolyline); zonePolyline = null; }
+            zonePolygon = new ymaps.Polygon([zonePoints], {}, {
+                fillColor: '#FFB6C1', fillOpacity: 0.5,
+                strokeColor: '#ff3b30', strokeWidth: 3, strokeStyle: 'solid'
+            });
+            myMap.geoObjects.add(zonePolygon);
+            
+            if (willSaveZone) {
+                saveZoneToServer();
+            } else {
+                // Оставляем зону на карте, но без сохранения
+                isDrawingZone = false;
+                myMap.behaviors.enable('drag'); myMap.behaviors.enable('multiTouch'); myMap.behaviors.enable('scrollZoom'); myMap.behaviors.enable('dblClickZoom');
+                document.getElementById('drawingIndicator').style.display = 'none';
+                myMap.container.getElement().style.cursor = '';
             }
         }
 
         function finishZone() {
             if (zonePoints.length < 3) { 
-                if(drawMode === 1) alert('Нужно минимум 3 точки!'); 
+                alert('Нужно минимум 3 точки!'); 
                 return; 
             }
+            
+            // Замыкаем линию в полигон
+            if (zonePolyline) { myMap.geoObjects.remove(zonePolyline); zonePolyline = null; }
+            zonePolygon = new ymaps.Polygon([zonePoints], {}, {
+                fillColor: '#FFB6C1', fillOpacity: 0.5,
+                strokeColor: '#ff3b30', strokeWidth: 3, strokeStyle: 'solid',
+                editorDrawingCursor: "crosshair",
+                draggable: false
+            });
+            zonePolygon.editor.startEditing();
+            myMap.geoObjects.add(zonePolygon);
+            
             if (willSaveZone) {
                 saveZoneToServer();
             } else {
-                cancelZoneDrawing();
+                isDrawingZone = false; drawMode = 1; willSaveZone = false;
+                zonePoints = []; zoneComment = "";
+                zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); }); zonePointMarkers = [];
+                myMap.behaviors.enable('drag'); myMap.behaviors.enable('multiTouch'); myMap.behaviors.enable('scrollZoom'); myMap.behaviors.enable('dblClickZoom');
+                document.getElementById('drawingIndicator').style.display = 'none';
+                myMap.container.getElement().style.cursor = '';
             }
         }
 
         function cancelZoneDrawing() {
             isDrawingZone = false; drawMode = 1; willSaveZone = false;
             zonePoints = []; zoneComment = ""; freehandStartPoint = null;
+            isDrawingFreehand = false;
             zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); }); zonePointMarkers = [];
             if (zonePolygon) { myMap.geoObjects.remove(zonePolygon); zonePolygon = null; }
+            if (zonePolyline) { myMap.geoObjects.remove(zonePolyline); zonePolyline = null; }
             myMap.behaviors.enable('drag'); myMap.behaviors.enable('multiTouch'); myMap.behaviors.enable('scrollZoom'); myMap.behaviors.enable('dblClickZoom');
             document.getElementById('drawingIndicator').style.display = 'none';
             myMap.container.getElement().style.cursor = '';
@@ -349,7 +398,14 @@
                 body: JSON.stringify({ coords: zonePoints, comment: zoneComment })
             }).then(function(r) { return r.json(); }).then(function(data) {
                 if (data.success) {
-                    cancelZoneDrawing();
+                    isDrawingZone = false; drawMode = 1; willSaveZone = false;
+                    zonePoints = []; zoneComment = "";
+                    zonePointMarkers.forEach(function(m) { myMap.geoObjects.remove(m); }); zonePointMarkers = [];
+                    if (zonePolygon) { myMap.geoObjects.remove(zonePolygon); zonePolygon = null; }
+                    if (zonePolyline) { myMap.geoObjects.remove(zonePolyline); zonePolyline = null; }
+                    myMap.behaviors.enable('drag'); myMap.behaviors.enable('multiTouch'); myMap.behaviors.enable('scrollZoom'); myMap.behaviors.enable('dblClickZoom');
+                    document.getElementById('drawingIndicator').style.display = 'none';
+                    myMap.container.getElement().style.cursor = '';
                     loadZones();
                 }
             });
@@ -374,7 +430,6 @@
             });
         }
 
-        // === ОСТАЛЬНОЙ КОД (самокаты, парковки) БЕЗ ИЗМЕНЕНИЙ ===
         function getScooterImage(status) {
             if (status === 'red') return BASE_URL + 'red.png';
             if (status === 'not_found') return BASE_URL + 'black.png';
