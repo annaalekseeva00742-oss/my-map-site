@@ -527,59 +527,63 @@
             };
         }
 
-        function createParkingLabels(lat, lon, available, dead, pId) {
-            var layout = ymaps.templateLayoutFactory.createClass(
-                '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100px;">' +
-                    '<div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ' + available + '</div>' +
-                    '<div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ' + dead + '</div>' +
-                '</div>'
-            );
-            return new ymaps.Placemark([lat, lon], {}, {
-                iconLayout: layout,
-                iconOffset: [-33, -35],
-                iconShape: { type: 'Rectangle', coordinates: [[0, 0], [100, 32]] }
-            });
-        }
+        function createParkingLabels(lat, lon, available, dead, broken, pId) {
+    var layout = ymaps.templateLayoutFactory.createClass(
+        '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100px;">' +
+            '<div style="background: #4CAF50; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">В доступе: ' + available + '</div>' +
+            '<div style="background: #f44336; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Севшие: ' + dead + '</div>' +
+            '<div style="background: #7E0000; color: white; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 3px; white-space: nowrap;">Поломки: ' + broken + '</div>' +
+        '</div>'
+    );
+    return new ymaps.Placemark([lat, lon], {}, {
+        iconLayout: layout,
+        iconOffset: [-33, -45], // Сдвинул выше, чтобы вместить третью плашку
+        iconShape: { type: 'Rectangle', coordinates: [[0, 0], [100, 42]] }
+    });
+}
 
         function loadParkings() {
-            parkingMarkers.forEach(function(m) { myMap.geoObjects.remove(m); }); parkingMarkers = [];
-            parkingLabelMarkers.forEach(function(m) { myMap.geoObjects.remove(m); }); parkingLabelMarkers = [];
-            fetch(API_URL + '/get_parkings').then(function(r) { return r.json(); }).then(function(data) {
-                data.forEach(function(p) {
-                    var pm = new ymaps.Placemark([p.lat, p.lon], { balloonContent: buildParkingBalloon(p) }, createParkingIcon());
-                    pm.properties.set('parkingData', p);
-                    myMap.geoObjects.add(pm); parkingMarkers.push(pm);
-                    var pl = createParkingLabels(p.lat, p.lon, p.available, p.dead, p.id);
-                    myMap.geoObjects.add(pl); parkingLabelMarkers.push(pl);
-                });
-            });
-        }
+    parkingMarkers.forEach(function(m) { myMap.geoObjects.remove(m); }); parkingMarkers = [];
+    parkingLabelMarkers.forEach(function(m) { myMap.geoObjects.remove(m); }); parkingLabelMarkers = [];
+    fetch(API_URL + '/get_parkings').then(function(r) { return r.json(); }).then(function(data) {
+        data.forEach(function(p) {
+            var pm = new ymaps.Placemark([p.lat, p.lon], { balloonContent: buildParkingBalloon(p) }, createParkingIcon());
+            pm.properties.set('parkingData', p);
+            myMap.geoObjects.add(pm); parkingMarkers.push(pm);
+            var pl = createParkingLabels(p.lat, p.lon, p.available, p.dead, p.broken, p.id);
+            myMap.geoObjects.add(pl); parkingLabelMarkers.push(pl);
+        });
+    });
+}
 
         function buildParkingBalloon(p) {
-            return '<div style="min-width: 220px; padding: 15px; box-sizing: border-box; text-align: center;">' +
-                '<b style="font-size: 16px; display: block; margin-bottom: 15px;">' + p.title + '</b>' +
-                '<div style="display: flex; flex-direction: column; gap: 10px;">' +
-                    '<div style="background: #4CAF50; color: white; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 14px;">В доступе: ' + p.available + '</div>' +
-                    '<div style="background: #f44336; color: white; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 14px;">Севшие: ' + p.dead + '</div>' +
-                    '<button onclick="event.stopPropagation(); startEditParking(' + p.id + ')" style="background: #9E9E9E; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px;">Изменить</button>' +
-                '</div></div>';
-        }
+    return '<div style="min-width: 220px; padding: 15px; box-sizing: border-box; text-align: center;">' +
+        '<b style="font-size: 16px; display: block; margin-bottom: 15px;">' + p.title + '</b>' +
+        '<div style="display: flex; flex-direction: column; gap: 10px;">' +
+            '<div style="background: #4CAF50; color: white; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 14px;">В доступе: ' + p.available + '</div>' +
+            '<div style="background: #f44336; color: white; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 14px;">Севшие: ' + p.dead + '</div>' +
+            '<div style="background: #7E0000; color: white; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 14px;">Поломки: ' + p.broken + '</div>' +
+            '<button onclick="event.stopPropagation(); startEditParking(' + p.id + ')" style="background: #9E9E9E; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px;">Изменить</button>' +
+        '</div></div>';
+}
 
         function startEditParking(id) {
-            var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
-            if (!pm) return;
-            var p = pm.properties.get('parkingData');
-            var html = '<div style="min-width: 220px; padding: 15px; box-sizing: border-box; text-align: center;">' +
-                '<b style="font-size: 16px; display: block; margin-bottom: 15px;">' + p.title + '</b>' +
-                '<div style="display: flex; flex-direction: column; gap: 10px;">' +
-                    '<div><button id="btn_avail_' + id + '" onclick="activateInput(\'avail\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">В доступе</button>' +
-                    '<input id="inp_avail_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;"></div>' +
-                    '<div><button id="btn_dead_' + id + '" onclick="activateInput(\'dead\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">Севшие</button>' +
-                    '<input id="inp_dead_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;"></div>' +
-                    '<button onclick="saveParking(' + id + ')" style="background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">ОК</button>' +
-                '</div></div>';
-            pm.properties.set('balloonContent', html); pm.balloon.open();
-        }
+    var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
+    if (!pm) return;
+    var p = pm.properties.get('parkingData');
+    var html = '<div style="min-width: 220px; padding: 15px; box-sizing: border-box; text-align: center;">' +
+        '<b style="font-size: 16px; display: block; margin-bottom: 15px;">' + p.title + '</b>' +
+        '<div style="display: flex; flex-direction: column; gap: 10px;">' +
+            '<div><button id="btn_avail_' + id + '" onclick="activateInput(\'avail\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">В доступе</button>' +
+            '<input id="inp_avail_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;"></div>' +
+            '<div><button id="btn_dead_' + id + '" onclick="activateInput(\'dead\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">Севшие</button>' +
+            '<input id="inp_dead_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;"></div>' +
+            '<div><button id="btn_broken_' + id + '" onclick="activateInput(\'broken\', ' + id + ')" style="background: white; color: #333; border: 2px solid #333; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">Поломки</button>' +
+            '<input id="inp_broken_' + id + '" type="number" style="display: none; width: 100%; padding: 10px; border: 2px solid #333; border-radius: 4px; text-align: center; font-size: 16px; box-sizing: border-box;"></div>' +
+            '<button onclick="saveParking(' + id + ')" style="background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 14px;">ОК</button>' +
+        '</div></div>';
+    pm.properties.set('balloonContent', html); pm.balloon.open();
+}
 
         function activateInput(type, id) {
             document.getElementById('btn_' + type + '_' + id).style.display = 'none';
@@ -588,18 +592,20 @@
         }
 
         function saveParking(id) {
-            var inpAvail = document.getElementById('inp_avail_' + id);
-            var inpDead = document.getElementById('inp_dead_' + id);
-            var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
-            var oldData = pm ? pm.properties.get('parkingData') : {available: '?', dead: '?'};
-            var newAvail = inpAvail.style.display !== 'none' && inpAvail.value.trim() !== '' ? inpAvail.value.trim() : oldData.available;
-            var newDead = inpDead.style.display !== 'none' && inpDead.value.trim() !== '' ? inpDead.value.trim() : oldData.dead;
+    var inpAvail = document.getElementById('inp_avail_' + id);
+    var inpDead = document.getElementById('inp_dead_' + id);
+    var inpBroken = document.getElementById('inp_broken_' + id);
+    var pm = parkingMarkers.find(function(m) { var d = m.properties.get('parkingData'); return d && d.id === id; });
+    var oldData = pm ? pm.properties.get('parkingData') : {available: '?', dead: '?', broken: '?'};
+    var newAvail = inpAvail.style.display !== 'none' && inpAvail.value.trim() !== '' ? inpAvail.value.trim() : oldData.available;
+    var newDead = inpDead.style.display !== 'none' && inpDead.value.trim() !== '' ? inpDead.value.trim() : oldData.dead;
+    var newBroken = inpBroken.style.display !== 'none' && inpBroken.value.trim() !== '' ? inpBroken.value.trim() : oldData.broken;
 
-            fetch(API_URL + '/update_parking', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id, available: newAvail, dead: newDead })
-            }).then(function(r) { return r.json(); }).then(function(data) { if (data.success) loadParkings(); });
-        }
+    fetch(API_URL + '/update_parking', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, available: newAvail, dead: newDead, broken: newBroken })
+    }).then(function(r) { return r.json(); }).then(function(data) { if (data.success) loadParkings(); });
+}
 
         function onTasksHeaderClick() {
             tasksHeaderClickCount++;
