@@ -2,6 +2,7 @@ import telebot
 import requests
 import re
 import os
+import json
 import psycopg
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -28,6 +29,9 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS parkings
                  (id SERIAL PRIMARY KEY, title TEXT UNIQUE, address TEXT, lat REAL, lon REAL, 
                   available_count TEXT DEFAULT '?', dead_count TEXT DEFAULT '?')''')
+    # НОВАЯ ТАБЛИЦА ДЛЯ ЗОН
+    c.execute('''CREATE TABLE IF NOT EXISTS zones
+                 (id SERIAL PRIMARY KEY, coords TEXT, comment TEXT)''')
     conn.commit()
     conn.close()
 
@@ -63,7 +67,38 @@ def handle_message(message):
     text = message.text.strip()
     text_lower = text.lower()
     
-    # === ВСЕ P OFF — удалить все парковки ===
+    # === ОБНОВЛЕНИЕ ПАРКОВКИ (Ермолино Д10 С5) ===
+    parking_update_match = re.match(r'^(.*?)\s+[Дд](\d+)\s+[Сс](\d+)$', text, re.IGNORECASE)
+    if parking_update_match:
+        title = parking_update_match.group(1).strip()
+        avail = parking_update_match.group(2)
+        dead = parking_update_match.group(3)
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("UPDATE parkings SET available_count = %s, dead_count = %s WHERE title = %s", (avail, dead, title))
+        conn.commit()
+        if c.rowcount > 0:
+            bot.reply_to(message, f"✅ Парковка \"{title}\" обновлена: В доступе {avail}, Севшие {dead}")
+        else:
+            bot.reply_to(message, f"❌ Парковка \"{title}\" не найдена.")
+        conn.close()
+        return
+
+    # === LAST ZONA OFF ===
+    if text_lower == 'last zona off':
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM zones WHERE id = (SELECT MAX(id) FROM zones)")
+        conn.commit()
+        if c.rowcount > 0:
+            bot.reply_to(message, "🗑️ Последняя зона удалена.")
+        else:
+            bot.reply_to(message, "❌ Зон не найдено.")
+        conn.close()
+        return
+
+    # === ВСЕ P OFF ===
     if text_lower == 'все p off':
         conn = get_db_connection()
         c = conn.cursor()
@@ -74,7 +109,7 @@ def handle_message(message):
         bot.reply_to(message, f"🗑️ Удалено парковок: {count}")
         return
     
-    # === LAST P OFF — удалить последнюю парковку ===
+    # === LAST P OFF ===
     if text_lower == 'last p off':
         conn = get_db_connection()
         c = conn.cursor()
@@ -111,7 +146,7 @@ def handle_message(message):
                         conn.commit()
                         bot.reply_to(message, f"✅ Парковка \"{title}\" успешно добавлена!")
                     except psycopg.errors.UniqueViolation:
-                        bot.reply_to(message, f"️ Парковка \"{title}\" уже существует.")
+                        bot.reply_to(message, f"⚠️ Парковка \"{title}\" уже существует.")
                     conn.close()
                 else:
                     bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
@@ -147,10 +182,9 @@ def handle_message(message):
         location_part = parts[0].strip()
         title = parts[1].strip()
         
-        # Проверяем, есть ли "red" в конце названия
         status = 'active'
         if title.lower().endswith(' red'):
-            title = title[:-4].strip()  # Убираем " red"
+            title = title[:-4].strip()
             status = 'red'
         
         lat, lon = parse_coordinates(location_part)
@@ -172,6 +206,7 @@ def handle_message(message):
         else:
             bot.reply_to(message, f"❌ Не удалось найти: '{location_part}' в Смоленске.")
 
+# === API ЭНДПОИНТЫ ===
 @app.route('/')
 def serve_website():
     return "Бот работает!"
@@ -231,15 +266,6 @@ def remove_departure():
     conn.close()
     return jsonify({"success": True})
 
-@app.route('/clear_all_departures', methods=['POST'])
-def clear_all_departures():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM departures")
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True})
-
 @app.route('/get_parkings')
 def get_parkings():
     conn = get_db_connection()
@@ -256,6 +282,46 @@ def update_parking():
     c = conn.cursor()
     c.execute("UPDATE parkings SET available_count = %s, dead_count = %s WHERE id = %s", 
               (data.get('available'), data.get('dead'), data.get('id')))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+# === НОВЫЕ ЭНДПОИНТЫ ДЛЯ ЗОН ===
+@app.route('/get_zones')
+def get_zones():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, coords, comment FROM zones")
+    zones = [{"id": row[0], "coords": json.loads(row[1]), "comment": row[2]} for row in c.fetchall()]
+    conn.close()
+    return jsonify(zones)
+
+@app.route('/add_zone', methods=['POST'])
+def add_zone():
+    data = request.json
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("INSERT INTO zones (coords, comment) VALUES (%s, %s)", 
+              (json.dumps(data.get('coords')), data.get('comment')))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/delete_zone', methods=['POST'])
+def delete_zone():
+    data = request.json
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM zones WHERE id = %s", (data.get('id'),))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/delete_last_zone', methods=['POST'])
+def delete_last_zone():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM zones WHERE id = (SELECT MAX(id) FROM zones)")
     conn.commit()
     conn.close()
     return jsonify({"success": True})
